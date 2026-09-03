@@ -3,27 +3,38 @@ import { useMemo } from 'react';
 import { paths } from 'src/routes/paths';
 
 import { nousAccent } from 'src/theme/palette';
+import { courseTotals } from 'src/utils/catalog';
 import { useNousData } from 'src/context/nous-data';
 
 import { useAuthContext } from 'src/auth/hooks';
 
 import { Hero, NousCard } from '../components';
-import { CardsGrid } from '../styles';
+import { CardsGrid, EmptyState } from '../styles';
 
 // ----------------------------------------------------------------------
 
+/** Step 1 of the student flow: every active course. */
 export function NousHomeView() {
-  const { programs, settings } = useNousData();
+  const { activeCourses, settings } = useNousData();
 
   const { user } = useAuthContext();
 
-  const totals = useMemo(() => {
-    const levels = programs.flatMap((program) => program.levels);
-    const subjects = levels.flatMap((level) => level.subjects);
-    const chapters = subjects.flatMap((subject) => subject.chapters);
+  const totals = useMemo(
+    () =>
+      activeCourses.reduce(
+        (sum, course) => {
+          const course_ = courseTotals(course);
 
-    return { levels: levels.length, subjects: subjects.length, chapters: chapters.length };
-  }, [programs]);
+          return {
+            levels: sum.levels + course_.levels,
+            subjects: sum.subjects + course_.subjects,
+            chapters: sum.chapters + course_.chapters,
+          };
+        },
+        { levels: 0, subjects: 0, chapters: 0 }
+      ),
+    [activeCourses]
+  );
 
   const firstName = user?.name?.split(' ')[0];
 
@@ -31,37 +42,41 @@ export function NousHomeView() {
     <>
       <Hero
         title={
-          firstName ? `Welcome back, ${firstName}` : (settings?.homeTitle ?? 'Welcome to StudyHub')
+          firstName ? `Welcome back, ${firstName}` : settings?.homeTitle ?? 'Welcome to NOUS'
         }
         subtitle={settings?.homeSubtitle ?? 'Your organized learning platform for CA & ACCA'}
         stats={[
-          `${programs.length} programs`,
+          `${activeCourses.length} courses`,
           `${totals.subjects} subjects`,
           `${totals.chapters} chapters`,
         ]}
       />
 
-      <CardsGrid>
-        {programs.map((program, index) => {
-          const subjects = program.levels.reduce(
-            (total, level) => total + level.subjects.length,
-            0
-          );
+      {activeCourses.length ? (
+        <CardsGrid>
+          {activeCourses.map((course, index) => {
+            const { levels, subjects } = courseTotals(course);
 
-          return (
-            <NousCard
-              key={program.id}
-              href={paths.nous.program(program.id)}
-              icon={program.icon}
-              title={program.name}
-              description={program.description}
-              meta={`${program.levels.length} levels · ${subjects} subjects`}
-              accent={nousAccent(index)}
-              action="Explore"
-            />
-          );
-        })}
-      </CardsGrid>
+            return (
+              <NousCard
+                key={course.id}
+                href={paths.nous.course(course.id)}
+                icon={course.icon}
+                title={course.name}
+                description={course.description}
+                meta={`${levels} levels · ${subjects} subjects`}
+                accent={nousAccent(index)}
+                action="Explore"
+              />
+            );
+          })}
+        </CardsGrid>
+      ) : (
+        <EmptyState>
+          <strong>No courses available yet</strong>
+          Courses appear here as soon as an administrator publishes them.
+        </EmptyState>
+      )}
     </>
   );
 }

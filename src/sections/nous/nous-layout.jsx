@@ -40,8 +40,8 @@ export function NousLayout({ children }) {
     <AppRoot>
       <AppHeader>
         <Logo href={paths.nous.root}>
-          {settings?.logoPrefix ?? 'Study'}
-          <span>{settings?.logoSuffix ?? 'Hub'}</span>
+          {settings?.logoPrefix ?? 'NO'}
+          <span>{settings?.logoSuffix ?? 'US'}</span>
         </Logo>
 
         <HeaderActions>
@@ -61,7 +61,7 @@ export function NousLayout({ children }) {
 
       <AppMain>{children}</AppMain>
 
-      <AppFooter>{settings?.footerText ?? 'StudyHub © 2026'}</AppFooter>
+      <AppFooter>{settings?.footerText ?? 'NOUS © 2026'}</AppFooter>
     </AppRoot>
   );
 }

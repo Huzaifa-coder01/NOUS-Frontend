@@ -5,7 +5,7 @@ import { RouterLink } from 'src/routes/components';
 import { NOUS_FONT, NOUS_COLORS } from 'src/theme/palette';
 
 /**
- * The student site. It keeps the original StudyHub structure and palette
+ * The student site. It keeps the original NOUS structure and palette
  * (dark header, white cards on #f5f7fb, blue accents) with a lighter coat of
  * polish: a gradient hero, softer shadows, accent-tinted icons and hover states.
  */
@@ -223,9 +223,7 @@ export const CardIcon = styled('div', {
   width: 52,
   height: 52,
   borderRadius: 14,
-  background: `linear-gradient(135deg, ${accent?.soft ?? NOUS_COLORS.accentSoft} 0%, ${
-    accent?.mid ?? '#dbeafe'
-  } 100%)`,
+  background: `linear-gradient(135deg, ${accent?.soft ?? NOUS_COLORS.accentSoft} 0%, ${accent?.mid ?? '#dbeafe'} 100%)`,
   color: accent?.strong ?? NOUS_COLORS.accent,
   display: 'flex',
   alignItems: 'center',
@@ -349,9 +347,7 @@ export const ResourceCardRoot = styled(RouterLink, {
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: 27,
-    background: `linear-gradient(135deg, ${accent?.soft ?? NOUS_COLORS.accentSoft} 0%, ${
-      accent?.mid ?? '#dbeafe'
-    } 100%)`,
+    background: `linear-gradient(135deg, ${accent?.soft ?? NOUS_COLORS.accentSoft} 0%, ${accent?.mid ?? '#dbeafe'} 100%)`,
   },
   '& h3': { fontSize: 17, fontWeight: 'bold', margin: '0 0 6px' },
   '& p': { fontSize: 13, color: NOUS_COLORS.textMuted, margin: 0 },
@@ -428,29 +424,135 @@ export const HeaderText = styled('span')({
 });
 
 // ----------------------------------------------------------------------
-// Past papers (rendered inside the resource card)
+// Documents (past papers / syllabus / notes)
 // ----------------------------------------------------------------------
 
-export const PaperList = styled('div')({
+export const DocList = styled('div')({
   display: 'flex',
   flexDirection: 'column',
-  gap: 10,
-  marginTop: 12,
+  gap: 12,
 });
 
-export const PaperItem = styled('div')({
+export const DocItem = styled('div')({
   display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'flex-start',
+  alignItems: 'center',
   gap: 16,
-  padding: 14,
+  padding: '16px 18px',
+  background: NOUS_COLORS.paper,
   border: `1px solid ${NOUS_COLORS.border}`,
-  borderRadius: 12,
-  background: NOUS_COLORS.background,
+  borderRadius: 14,
+  boxShadow: SHADOW_SOFT,
+  transition: 'border-color .2s ease, transform .18s ease',
+  '&:hover': { borderColor: NOUS_COLORS.borderHover, transform: 'translateY(-2px)' },
+  '& .doc-icon': {
+    flexShrink: 0,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 20,
+    background: NOUS_COLORS.accentSoft,
+  },
+  '& .doc-body': { flexGrow: 1, minWidth: 0 },
+  '& .doc-name': {
+    fontWeight: 'bold',
+    fontSize: 15,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  '& .doc-meta': { color: NOUS_COLORS.textMuted, fontSize: 13, marginTop: 3 },
+  '& .doc-actions': { flexShrink: 0, display: 'flex', gap: 8 },
+});
+
+export const DocButton = styled('button')(({ variant }) => ({
+  fontFamily: NOUS_FONT,
+  fontSize: 13,
+  fontWeight: 'bold',
+  padding: '8px 14px',
+  borderRadius: 999,
+  cursor: 'pointer',
+  transition: 'background .2s ease, border-color .2s ease, opacity .2s ease',
+  ...(variant === 'primary'
+    ? {
+        border: '1px solid transparent',
+        background: NOUS_COLORS.accent,
+        color: '#ffffff',
+        '&:hover': { background: '#1d4ed8' },
+      }
+    : {
+        border: `1px solid ${NOUS_COLORS.border}`,
+        background: NOUS_COLORS.paper,
+        color: NOUS_COLORS.text,
+        '&:hover': { background: NOUS_COLORS.rowHover, borderColor: NOUS_COLORS.borderHover },
+      }),
+  '&:disabled': { opacity: 0.55, cursor: 'not-allowed' },
+}));
+
+export const EmptyState = styled('div')({
+  padding: '46px 26px',
+  textAlign: 'center',
+  background: NOUS_COLORS.paper,
+  border: `1px dashed ${NOUS_COLORS.border}`,
+  borderRadius: 16,
+  color: NOUS_COLORS.textMuted,
   fontSize: 14,
-  transition: 'border-color .2s ease',
-  '&:hover': { borderColor: NOUS_COLORS.borderHover },
-  '& .paper-meta': { color: NOUS_COLORS.textMuted, fontSize: 13, marginTop: 4 },
-  '& .paper-body': { marginTop: 8, whiteSpace: 'pre-wrap' },
-  '& a': { color: NOUS_COLORS.accent, fontWeight: 'bold' },
+  '& strong': { display: 'block', color: NOUS_COLORS.text, fontSize: 16, marginBottom: 6 },
+});
+
+// ----------------------------------------------------------------------
+// Notes upload (the only thing a student may add)
+// ----------------------------------------------------------------------
+
+export const UploadCard = styled('form')({
+  background: NOUS_COLORS.paper,
+  border: `1px solid ${NOUS_COLORS.border}`,
+  borderRadius: 16,
+  padding: 24,
+  marginBottom: 24,
+  boxShadow: SHADOW_SOFT,
+  '& h3': { fontSize: 17, fontWeight: 'bold', margin: '0 0 4px' },
+  '& .upload-hint': { color: NOUS_COLORS.textMuted, fontSize: 13, margin: '0 0 18px' },
+  '& .upload-row': { display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' },
+  '& .upload-error': { color: NOUS_COLORS.danger, fontSize: 13, marginTop: 12 },
+});
+
+export const UploadInput = styled('input')({
+  fontFamily: NOUS_FONT,
+  fontSize: 14,
+  flex: '1 1 240px',
+  minWidth: 0,
+  padding: '10px 14px',
+  borderRadius: 10,
+  border: `1px solid ${NOUS_COLORS.border}`,
+  background: NOUS_COLORS.background,
+  color: NOUS_COLORS.text,
+  '&:focus': { outline: 'none', borderColor: NOUS_COLORS.accentLight },
+});
+
+export const FilePicker = styled('label')({
+  fontFamily: NOUS_FONT,
+  fontSize: 13,
+  fontWeight: 'bold',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '10px 16px',
+  borderRadius: 10,
+  cursor: 'pointer',
+  border: `1px dashed ${NOUS_COLORS.borderHover}`,
+  background: NOUS_COLORS.accentSoft,
+  color: NOUS_COLORS.accent,
+  '& input': { display: 'none' },
+  '& .file-name': { fontWeight: 'normal', color: NOUS_COLORS.textMuted },
+});
+
+export const ListHeading = styled('h2')({
+  fontSize: 19,
+  fontWeight: 'bold',
+  margin: '34px 0 14px',
+  letterSpacing: '-0.01em',
+  '& span': { color: NOUS_COLORS.textMuted, fontWeight: 'normal', fontSize: 14, marginLeft: 10 },
 });

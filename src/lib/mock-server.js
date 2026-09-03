@@ -1,28 +1,40 @@
 /**
  * NOUS mock backend.
  *
- * Everything the UI needs (auth + catalog + users + settings) is served from
- * here, persisted in localStorage and returned through promises so the calling
- * code is already written the way it will be against a real API. Replacing this
- * file with axios calls is the only change needed once the server exists.
+ * Everything the UI needs (auth + catalog + documents + users + settings) is
+ * served from here, persisted in localStorage and returned through promises so
+ * the calling code is already written the way it will be against a real API.
+ *
+ * PDF bytes are too big for localStorage, so they live in IndexedDB
+ * (`file-store.js`) and the catalog only keeps a `fileId`.
+ *
+ * The rules the catalog enforces, in one place:
+ *
+ *  - every node carries `status` ('active' | 'inactive') and `deleted`;
+ *  - deactivating a node deactivates every descendant node and document;
+ *  - deleting a node soft deletes only that node and deactivates - never
+ *    deletes - its descendants, so nothing is lost from the database;
+ *  - document names are unique across the whole system.
  */
 
 import {
+  STATUS,
   nousSlug,
+  DOC_KINDS,
   NOUS_SEED_USERS,
-  DEFAULT_RESOURCES,
-  NOUS_SEED_PROGRAMS,
+  NOUS_SEED_COURSES,
   NOUS_SEED_SETTINGS,
-  createSeedResources,
 } from 'src/_mock/_nous';
 
+import { createPdfBlob } from './pdf-stub';
 import { signToken, verifyToken, hashPassword } from './mock-jwt';
+import { fileStore, nextFileId, ACCEPTED_MIME, MAX_FILE_SIZE } from './file-store';
 
 // ----------------------------------------------------------------------
 
 const DB_KEY = 'nous.db';
 
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const LATENCY = 180;
 
@@ -67,8 +79,89 @@ function fail(message, status = 400) {
 }
 
 // ----------------------------------------------------------------------
+// Catalog shape
+// ----------------------------------------------------------------------
+
+/** Node types, outermost first. */
+export const NODE_TYPES = ['course', 'level', 'subject', 'chapter'];
+
+const ID_KEY = {
+  course: 'courseId',
+  level: 'levelId',
+  subject: 'subjectId',
+  chapter: 'chapterId',
+};
+
+const CHILD_KEY = { course: 'levels', level: 'subjects', subject: 'chapters', chapter: null };
+
+const CHILD_TYPE = { course: 'level', level: 'subject', subject: 'chapter', chapter: null };
+
+export const NODE_LABEL = {
+  course: 'Course',
+  level: 'Level',
+  subject: 'Subject',
+  chapter: 'Chapter',
+};
+
+/** Document arrays carried by each node type. */
+const DOC_KEYS = {
+  course: [],
+  level: [],
+  subject: ['pastPapers'],
+  chapter: ['pastPapers', 'syllabus', 'notes'],
+};
+
+function childrenOf(node, type) {
+  const key = CHILD_KEY[type];
+
+  return key ? node[key] ?? [] : [];
+}
+
+function docsOf(node, type) {
+  return DOC_KEYS[type].flatMap((key) => node[key] ?? []);
+}
+
+// ----------------------------------------------------------------------
+// Seeding
+// ----------------------------------------------------------------------
 
 let seeding = null;
+
+/** Turns every `seedFile` marker in the seed catalog into a real PDF. */
+async function materializeSeedFiles(courses) {
+  const entries = [];
+
+  courses.forEach((course) =>
+    course.levels.forEach((level) =>
+      level.subjects.forEach((subject) =>
+        [subject, ...subject.chapters].forEach((node) => {
+          const type = node === subject ? 'subject' : 'chapter';
+
+          DOC_KEYS[type].forEach((key) =>
+            (node[key] ?? []).forEach((doc) => {
+              if (!doc.seedFile) return;
+
+              const blob = createPdfBlob(doc.seedFile.title, doc.seedFile.body);
+              const fileId = nextFileId();
+
+              entries.push({ id: fileId, blob, name: doc.fileName, mimeType: ACCEPTED_MIME });
+
+              doc.fileId = fileId;
+              doc.fileSize = blob.size;
+              delete doc.seedFile;
+            })
+          );
+        })
+      )
+    )
+  );
+
+  if (entries.length) {
+    await fileStore.putMany(entries);
+  }
+
+  return courses;
+}
 
 async function seed() {
   const users = await Promise.all(
@@ -79,9 +172,11 @@ async function seed() {
     }))
   );
 
+  const courses = await materializeSeedFiles(clone(NOUS_SEED_COURSES));
+
   return writeDb({
     version: DB_VERSION,
-    programs: clone(NOUS_SEED_PROGRAMS),
+    courses,
     users,
     settings: { ...NOUS_SEED_SETTINGS },
   });
@@ -103,9 +198,11 @@ async function db() {
   return seeding;
 }
 
-/** Wipes the local database and re-seeds it from `src/_mock/_nous.js`. */
+/** Wipes the local database (metadata + PDFs) and re-seeds it. */
 export async function resetDatabase() {
   localStorage.removeItem(DB_KEY);
+
+  await fileStore.clear();
 
   await seed();
 
@@ -130,52 +227,60 @@ function uniqueId(collection, name, fallback) {
   return id;
 }
 
-function locate(data, { programId, levelId, subjectId, chapterId }) {
-  const program = data.programs.find((item) => item.id === programId);
+/**
+ * Walks the url segments down the tree. Returns every node it passed through so
+ * callers can read the ancestor chain as well as the target.
+ */
+function locate(data, path = {}) {
+  const found = {};
 
-  if (programId && !program) fail(`Program "${programId}" not found`, 404);
-  if (!levelId) return { program };
+  let list = data.courses;
 
-  const level = program.levels.find((item) => item.id === levelId);
+  for (const type of NODE_TYPES) {
+    const id = path[ID_KEY[type]];
 
-  if (!level) fail(`Level "${levelId}" not found`, 404);
-  if (!subjectId) return { program, level };
+    if (!id) break;
 
-  const subject = level.subjects.find((item) => item.id === subjectId);
+    const node = list.find((item) => item.id === id);
 
-  if (!subject) fail(`Subject "${subjectId}" not found`, 404);
-  if (!chapterId) return { program, level, subject };
+    if (!node) fail(`${NODE_LABEL[type]} "${id}" not found`, 404);
 
-  const chapter = subject.chapters.find((item) => item.id === chapterId);
+    found[type] = node;
 
-  if (!chapter) fail(`Chapter "${chapterId}" not found`, 404);
+    list = childrenOf(node, type);
+  }
 
-  return { program, level, subject, chapter };
+  return found;
 }
 
-function assertResetCode(data, email, code) {
-  const pending = data.passwordResets?.[email];
+/** The array a node of `type` lives in, given its parent path. */
+function collectionFor(data, type, path) {
+  if (type === 'course') return data.courses;
 
-  if (!pending) fail('Request a new reset code', 400);
-  if (pending.expiresAt < Date.now()) fail('This code has expired', 400);
-  if (pending.code !== String(code).trim()) fail('Incorrect code', 400);
+  const parentType = NODE_TYPES[NODE_TYPES.indexOf(type) - 1];
+
+  const found = locate(data, path);
+
+  const parent = found[parentType];
+
+  if (!parent) fail(`${NODE_LABEL[parentType]} not found`, 404);
+
+  return parent[CHILD_KEY[parentType]];
 }
 
-function publicUser(user) {
-  const { passwordHash, ...rest } = user;
+function nodeFor(data, type, path) {
+  const found = locate(data, path);
 
-  return rest;
+  const node = found[type];
+
+  if (!node) fail(`${NODE_LABEL[type]} not found`, 404);
+
+  return node;
 }
 
-/** True when `id` is the only admin who can still reach the admin panel. */
-function isLastActiveAdmin(data, id) {
-  const user = data.users.find((item) => item.id === id);
-
-  if (user?.role !== 'admin' || user?.status !== 'active') return false;
-
-  return !data.users.some(
-    (item) => item.id !== id && item.role === 'admin' && item.status === 'active'
-  );
+/** True when the node and its whole ancestor chain are active and not deleted. */
+function isVisible(chain) {
+  return chain.every((node) => node && node.status === STATUS.active && !node.deleted);
 }
 
 function move(list, id, direction) {
@@ -191,6 +296,26 @@ function move(list, id, direction) {
   list.splice(target, 0, item);
 
   return list;
+}
+
+// ----------------------------------------------------------------------
+// Cascade
+// ----------------------------------------------------------------------
+
+/** Deactivates every descendant node and document of `node`. */
+function deactivateDescendants(node, type) {
+  docsOf(node, type).forEach((doc) => {
+    doc.status = STATUS.inactive;
+  });
+
+  const childType = CHILD_TYPE[type];
+
+  if (!childType) return;
+
+  childrenOf(node, type).forEach((child) => {
+    child.status = STATUS.inactive;
+    deactivateDescendants(child, childType);
+  });
 }
 
 // ----------------------------------------------------------------------
@@ -327,6 +452,31 @@ export const authApi = {
   },
 };
 
+function assertResetCode(data, email, code) {
+  const pending = data.passwordResets?.[email];
+
+  if (!pending) fail('Request a new reset code', 400);
+  if (pending.expiresAt < Date.now()) fail('This code has expired', 400);
+  if (pending.code !== String(code).trim()) fail('Incorrect code', 400);
+}
+
+function publicUser(user) {
+  const { passwordHash, ...rest } = user;
+
+  return rest;
+}
+
+/** True when `id` is the only admin who can still reach the admin panel. */
+function isLastActiveAdmin(data, id) {
+  const user = data.users.find((item) => item.id === id);
+
+  if (user?.role !== 'admin' || user?.status !== 'active') return false;
+
+  return !data.users.some(
+    (item) => item.id !== id && item.role === 'admin' && item.status === 'active'
+  );
+}
+
 // ----------------------------------------------------------------------
 // Users (admin)
 // ----------------------------------------------------------------------
@@ -381,8 +531,7 @@ export const usersApi = {
     }
 
     // never let the last usable admin demote or disable themselves out of the panel
-    const losingAdminAccess =
-      (role && role !== 'admin') || (status && status !== 'active');
+    const losingAdminAccess = (role && role !== 'admin') || (status && status !== 'active');
 
     if (losingAdminAccess && isLastActiveAdmin(data, id)) {
       fail('This is the last active admin - promote another admin first', 409);
@@ -417,14 +566,94 @@ export const usersApi = {
 };
 
 // ----------------------------------------------------------------------
-// Catalog: programs > levels > subjects > chapters > resources
+// Catalog: course > level > subject > chapter
 // ----------------------------------------------------------------------
+
+/**
+ * Url segments the router hands to a fixed page rather than to a record, so a
+ * node may never slug down to one of them.
+ */
+const RESERVED_IDS = { subject: ['past-papers'], chapter: ['past-papers', 'syllabus', 'notes'] };
+
+function assertUsableName(type, name) {
+  const reserved = RESERVED_IDS[type] ?? [];
+
+  if (reserved.includes(nousSlug(name))) {
+    fail(`"${name}" is a reserved name - please choose another`, 409);
+  }
+}
+
+function newNode(type, collection, values) {
+  const name = String(values.name ?? '').trim();
+
+  if (!name) fail(`${NODE_LABEL[type]} name is required`, 400);
+
+  assertUsableName(type, name);
+
+  if (collection.some((item) => item.name.toLowerCase() === name.toLowerCase() && !item.deleted)) {
+    fail(`A ${type} called "${name}" already exists here`, 409);
+  }
+
+  const base = {
+    id: uniqueId(collection, name, type),
+    name,
+    status: values.status === STATUS.inactive ? STATUS.inactive : STATUS.active,
+    deleted: false,
+  };
+
+  if (type === 'course') {
+    return {
+      ...base,
+      icon: values.icon || '\u{1F4DA}',
+      description: String(values.description ?? '').trim(),
+      levels: [],
+    };
+  }
+
+  if (type === 'level') {
+    return { ...base, subjects: [] };
+  }
+
+  if (type === 'subject') {
+    const total = Math.min(Math.max(Number(values.chapters) || 0, 0), 100);
+
+    return {
+      ...base,
+      pastPapers: [],
+      chapters: Array.from({ length: total }, (_, index) => ({
+        id: `chapter-${index + 1}`,
+        name: `Chapter ${index + 1}`,
+        title: `${name} - Chapter ${index + 1}`,
+        status: STATUS.active,
+        deleted: false,
+        pastPapers: [],
+        syllabus: [],
+        notes: [],
+      })),
+    };
+  }
+
+  return {
+    ...base,
+    title: String(values.title || name).trim(),
+    pastPapers: [],
+    syllabus: [],
+    notes: [],
+  };
+}
+
+const EDITABLE = {
+  course: ['name', 'icon', 'description'],
+  level: ['name'],
+  subject: ['name'],
+  chapter: ['name', 'title'],
+};
 
 export const catalogApi = {
   async get() {
     const data = await db();
 
-    return delay(clone(data.programs));
+    return delay(clone(data.courses));
   },
 
   async getSettings() {
@@ -442,369 +671,393 @@ export const catalogApi = {
     return delay({ ...data.settings });
   },
 
-  // Programs ----------------------------------------------------------
-
-  async createProgram({ name, icon = '📚', description = '' }) {
+  /** `path` is the PARENT path, e.g. create('subject', { courseId, levelId }). */
+  async create(type, path, values) {
     const data = await db();
 
-    const program = {
-      id: uniqueId(data.programs, name, 'program'),
-      name: String(name).trim(),
-      icon,
-      description,
-      levels: [],
-    };
+    const collection = collectionFor(data, type, { ...path, [ID_KEY[type]]: undefined });
 
-    data.programs.push(program);
+    const node = newNode(type, collection, values);
+
+    collection.push(node);
     writeDb(data);
 
-    return delay(clone(program));
+    return delay(clone(node));
   },
 
-  async updateProgram(programId, values) {
-    const data = await db();
-    const { program } = locate(data, { programId });
-
-    Object.assign(program, values);
-    writeDb(data);
-
-    return delay(clone(program));
-  },
-
-  async deleteProgram(programId) {
+  /** `path` includes the node's own id from here on. */
+  async update(type, path, values) {
     const data = await db();
 
-    locate(data, { programId });
+    const node = nodeFor(data, type, path);
 
-    data.programs = data.programs.filter((item) => item.id !== programId);
-    writeDb(data);
+    if (values.name !== undefined) {
+      const name = String(values.name).trim();
 
-    return delay(true);
-  },
+      if (!name) fail(`${NODE_LABEL[type]} name is required`, 400);
 
-  async moveProgram(programId, direction) {
-    const data = await db();
+      const siblings = collectionFor(data, type, path);
 
-    move(data.programs, programId, direction);
-    writeDb(data);
+      if (
+        siblings.some(
+          (item) =>
+            item.id !== node.id && !item.deleted && item.name.toLowerCase() === name.toLowerCase()
+        )
+      ) {
+        fail(`A ${type} called "${name}" already exists here`, 409);
+      }
+    }
 
-    return delay(clone(data.programs));
-  },
-
-  // Levels ------------------------------------------------------------
-
-  async createLevel(programId, { name }) {
-    const data = await db();
-    const { program } = locate(data, { programId });
-
-    const level = {
-      id: uniqueId(program.levels, name, 'level'),
-      name: String(name).trim(),
-      subjects: [],
-    };
-
-    program.levels.push(level);
-    writeDb(data);
-
-    return delay(clone(level));
-  },
-
-  async updateLevel(programId, levelId, values) {
-    const data = await db();
-    const { level } = locate(data, { programId, levelId });
-
-    Object.assign(level, values);
-    writeDb(data);
-
-    return delay(clone(level));
-  },
-
-  async deleteLevel(programId, levelId) {
-    const data = await db();
-    const { program } = locate(data, { programId, levelId });
-
-    program.levels = program.levels.filter((item) => item.id !== levelId);
-    writeDb(data);
-
-    return delay(true);
-  },
-
-  async moveLevel(programId, levelId, direction) {
-    const data = await db();
-    const { program } = locate(data, { programId });
-
-    move(program.levels, levelId, direction);
-    writeDb(data);
-
-    return delay(clone(program.levels));
-  },
-
-  // Subjects ----------------------------------------------------------
-
-  async createSubject(programId, levelId, { name, chapters = 0 }) {
-    const data = await db();
-    const { level } = locate(data, { programId, levelId });
-
-    const subjectName = String(name).trim();
-
-    const subject = {
-      id: uniqueId(level.subjects, subjectName, 'subject'),
-      name: subjectName,
-      pastPapers: [],
-      chapters: Array.from({ length: Number(chapters) || 0 }, (_, index) => ({
-        id: `chapter-${index + 1}`,
-        name: `Chapter ${index + 1}`,
-        title: `${subjectName} - Chapter ${index + 1}`,
-        resources: createSeedResources(),
-        pastPapers: [],
-      })),
-    };
-
-    level.subjects.push(subject);
-    writeDb(data);
-
-    return delay(clone(subject));
-  },
-
-  async updateSubject(programId, levelId, subjectId, values) {
-    const data = await db();
-    const { subject } = locate(data, { programId, levelId, subjectId });
-
-    Object.assign(subject, values);
-    writeDb(data);
-
-    return delay(clone(subject));
-  },
-
-  async deleteSubject(programId, levelId, subjectId) {
-    const data = await db();
-    const { level } = locate(data, { programId, levelId, subjectId });
-
-    level.subjects = level.subjects.filter((item) => item.id !== subjectId);
-    writeDb(data);
-
-    return delay(true);
-  },
-
-  async moveSubject(programId, levelId, subjectId, direction) {
-    const data = await db();
-    const { level } = locate(data, { programId, levelId });
-
-    move(level.subjects, subjectId, direction);
-    writeDb(data);
-
-    return delay(clone(level.subjects));
-  },
-
-  // Chapters ----------------------------------------------------------
-
-  async createChapter(programId, levelId, subjectId, { name, title }) {
-    const data = await db();
-    const { subject } = locate(data, { programId, levelId, subjectId });
-
-    const chapterName = String(name).trim();
-
-    const chapter = {
-      id: uniqueId(subject.chapters, chapterName, 'chapter'),
-      name: chapterName,
-      title: String(title || `${subject.name} - ${chapterName}`).trim(),
-      resources: createSeedResources(),
-      pastPapers: [],
-    };
-
-    subject.chapters.push(chapter);
-    writeDb(data);
-
-    return delay(clone(chapter));
-  },
-
-  async updateChapter(programId, levelId, subjectId, chapterId, values) {
-    const data = await db();
-    const { chapter } = locate(data, { programId, levelId, subjectId, chapterId });
-
-    Object.assign(chapter, values);
-    writeDb(data);
-
-    return delay(clone(chapter));
-  },
-
-  async deleteChapter(programId, levelId, subjectId, chapterId) {
-    const data = await db();
-    const { subject } = locate(data, { programId, levelId, subjectId, chapterId });
-
-    subject.chapters = subject.chapters.filter((item) => item.id !== chapterId);
-    writeDb(data);
-
-    return delay(true);
-  },
-
-  async moveChapter(programId, levelId, subjectId, chapterId, direction) {
-    const data = await db();
-    const { subject } = locate(data, { programId, levelId, subjectId });
-
-    move(subject.chapters, chapterId, direction);
-    writeDb(data);
-
-    return delay(clone(subject.chapters));
-  },
-
-  // Past papers: subject level (whole exam papers) --------------------
-
-  async createSubjectPaper(programId, levelId, subjectId, values) {
-    const data = await db();
-    const { subject } = locate(data, { programId, levelId, subjectId });
-
-    subject.pastPapers = subject.pastPapers ?? [];
-
-    const paper = {
-      id: uniqueId(subject.pastPapers, `${values.year} ${values.session} ${values.type}`, 'paper'),
-      title: String(values.title).trim(),
-      year: Number(values.year),
-      session: values.session,
-      type: values.type,
-      durationMins: Number(values.durationMins) || 0,
-      totalMarks: Number(values.totalMarks) || 0,
-      fileUrl: values.fileUrl ?? '',
-      status: values.status ?? 'published',
-    };
-
-    subject.pastPapers.push(paper);
-    writeDb(data);
-
-    return delay(clone(paper));
-  },
-
-  async updateSubjectPaper(programId, levelId, subjectId, paperId, values) {
-    const data = await db();
-    const { subject } = locate(data, { programId, levelId, subjectId });
-
-    const paper = subject.pastPapers?.find((item) => item.id === paperId);
-
-    if (!paper) fail('Past paper not found', 404);
-
-    Object.assign(paper, values, {
-      year: values.year !== undefined ? Number(values.year) : paper.year,
-      durationMins:
-        values.durationMins !== undefined ? Number(values.durationMins) : paper.durationMins,
-      totalMarks: values.totalMarks !== undefined ? Number(values.totalMarks) : paper.totalMarks,
+    EDITABLE[type].forEach((key) => {
+      if (values[key] !== undefined) node[key] = String(values[key]).trim();
     });
 
     writeDb(data);
 
-    return delay(clone(paper));
+    return delay(clone(node));
   },
 
-  async deleteSubjectPaper(programId, levelId, subjectId, paperId) {
+  /**
+   * Activate / deactivate. Deactivating cascades down; activating only touches
+   * the node itself, so a parent coming back online does not silently republish
+   * children that were switched off on purpose.
+   */
+  async setStatus(type, path, status) {
     const data = await db();
-    const { subject } = locate(data, { programId, levelId, subjectId });
 
-    subject.pastPapers = (subject.pastPapers ?? []).filter((item) => item.id !== paperId);
+    const node = nodeFor(data, type, path);
+
+    if (node.deleted) fail(`This ${type} has been deleted`, 409);
+
+    if (![STATUS.active, STATUS.inactive].includes(status)) fail('Unknown status', 400);
+
+    node.status = status;
+
+    if (status === STATUS.inactive) {
+      deactivateDescendants(node, type);
+    }
+
+    writeDb(data);
+
+    return delay(clone(node));
+  },
+
+  /**
+   * Soft delete. The node is flagged deleted and everything under it is
+   * deactivated but kept, so no child record is ever lost.
+   */
+  async remove(type, path) {
+    const data = await db();
+
+    const node = nodeFor(data, type, path);
+
+    node.deleted = true;
+    node.status = STATUS.inactive;
+    node.deletedAt = new Date().toISOString();
+
+    deactivateDescendants(node, type);
+
     writeDb(data);
 
     return delay(true);
   },
 
-  // Past papers: chapter level (individual past questions) -------------
-
-  async createChapterPaper(programId, levelId, subjectId, chapterId, values) {
+  async restore(type, path) {
     const data = await db();
-    const { chapter } = locate(data, { programId, levelId, subjectId, chapterId });
 
-    chapter.pastPapers = chapter.pastPapers ?? [];
+    const node = nodeFor(data, type, path);
 
-    const paper = {
-      id: uniqueId(
-        chapter.pastPapers,
-        `${values.year} ${values.session} ${values.questionNo} ${values.type}`,
-        'question'
-      ),
-      title: String(values.title).trim(),
-      year: Number(values.year),
-      session: values.session,
-      type: values.type,
-      marks: Number(values.marks) || 0,
-      questionNo: values.questionNo ?? '',
-      content: values.content ?? '',
-      status: values.status ?? 'published',
-    };
+    node.deleted = false;
+    delete node.deletedAt;
 
-    chapter.pastPapers.push(paper);
     writeDb(data);
 
-    return delay(clone(paper));
+    return delay(clone(node));
   },
 
-  async updateChapterPaper(programId, levelId, subjectId, chapterId, paperId, values) {
+  async move(type, path, direction) {
     const data = await db();
-    const { chapter } = locate(data, { programId, levelId, subjectId, chapterId });
 
-    const paper = chapter.pastPapers?.find((item) => item.id === paperId);
+    const collection = collectionFor(data, type, path);
 
-    if (!paper) fail('Past paper not found', 404);
+    move(collection, path[ID_KEY[type]], direction);
+    writeDb(data);
 
-    Object.assign(paper, values, {
-      year: values.year !== undefined ? Number(values.year) : paper.year,
-      marks: values.marks !== undefined ? Number(values.marks) : paper.marks,
+    return delay(clone(collection));
+  },
+};
+
+// ----------------------------------------------------------------------
+// Documents (PDFs): past papers, syllabus, notes
+// ----------------------------------------------------------------------
+
+/** Every document in the database, with the node chain that owns it. */
+function walkDocs(data, visit) {
+  data.courses.forEach((course) =>
+    course.levels.forEach((level) =>
+      level.subjects.forEach((subject) => {
+        DOC_KEYS.subject.forEach((key) =>
+          (subject[key] ?? []).forEach((doc) =>
+            visit(doc, { course, level, subject, chapter: null }, key)
+          )
+        );
+
+        subject.chapters.forEach((chapter) =>
+          DOC_KEYS.chapter.forEach((key) =>
+            (chapter[key] ?? []).forEach((doc) =>
+              visit(doc, { course, level, subject, chapter }, key)
+            )
+          )
+        );
+      })
+    )
+  );
+}
+
+/** Document names are unique across the whole system, not just per chapter. */
+function assertUniqueDocName(data, name, currentDoc) {
+  const needle = String(name).trim().toLowerCase();
+
+  if (!needle) fail('A PDF name is required', 400);
+
+  let clash = null;
+
+  walkDocs(data, (doc, chain) => {
+    if (doc === currentDoc || clash) return;
+
+    if (doc.name.trim().toLowerCase() === needle) clash = { doc, chain };
+  });
+
+  if (clash) {
+    const { chain } = clash;
+
+    const where = [chain.course.name, chain.level.name, chain.subject.name, chain.chapter?.name]
+      .filter(Boolean)
+      .join(' / ');
+
+    fail(`A PDF named "${String(name).trim()}" already exists in ${where}`, 409);
+  }
+}
+
+/** The array a document of `kind` lives in, at `path`. */
+function docCollection(data, kind, path) {
+  const key = DOC_KINDS[kind];
+
+  if (!key) fail(`Unknown document kind "${kind}"`, 400);
+
+  const found = locate(data, path);
+
+  const node = path.chapterId ? found.chapter : found.subject;
+
+  if (!node) fail('Subject or chapter not found', 404);
+
+  if (!path.chapterId && kind !== 'past-paper') {
+    fail(`${kind} documents belong to a chapter`, 400);
+  }
+
+  node[key] = node[key] ?? [];
+
+  return node[key];
+}
+
+async function storeUpload(file, name) {
+  if (!file) return null;
+
+  if (file.type && file.type !== ACCEPTED_MIME) fail('Only PDF files are accepted', 415);
+
+  if (file.size > MAX_FILE_SIZE) {
+    fail(`This PDF is larger than ${Math.round(MAX_FILE_SIZE / (1024 * 1024))}MB`, 413);
+  }
+
+  return fileStore.put(file, { name: `${nousSlug(name)}.pdf`, mimeType: ACCEPTED_MIME });
+}
+
+export const docsApi = {
+  /**
+   * `path` is `{ courseId, levelId, subjectId, chapterId? }`. A past paper may
+   * sit on a subject (no chapterId) or on a chapter; syllabus and notes are
+   * always on a chapter.
+   */
+  async create(kind, path, { name, file, status, uploadedBy, ...rest }) {
+    const data = await db();
+
+    const collection = docCollection(data, kind, path);
+
+    const trimmed = String(name ?? '').trim();
+
+    assertUniqueDocName(data, trimmed, null);
+
+    if (!file) fail('Choose a PDF to upload', 400);
+
+    const stored = await storeUpload(file, trimmed);
+
+    const doc = {
+      id: uniqueId(collection, trimmed, kind),
+      name: trimmed,
+      kind,
+      status: status === STATUS.inactive ? STATUS.inactive : STATUS.active,
+      deleted: false,
+      fileId: stored.fileId,
+      fileName: stored.fileName,
+      originalFileName: file.name,
+      fileSize: stored.fileSize,
+      mimeType: stored.mimeType,
+      uploadedBy: uploadedBy ?? { id: 'user-admin', name: 'NOUS Admin', role: 'admin' },
+      createdAt: new Date().toISOString(),
+    };
+
+    if (kind === 'past-paper') {
+      doc.year = Number(rest.year) || new Date().getFullYear();
+      doc.session = rest.session ?? '';
+      doc.type = rest.type ?? '';
+    }
+
+    collection.push(doc);
+    writeDb(data);
+
+    return delay(clone(doc));
+  },
+
+  async update(kind, path, docId, { name, file, ...rest }) {
+    const data = await db();
+
+    const collection = docCollection(data, kind, path);
+
+    const doc = collection.find((item) => item.id === docId);
+
+    if (!doc) fail('PDF not found', 404);
+
+    if (name !== undefined) {
+      const trimmed = String(name).trim();
+
+      assertUniqueDocName(data, trimmed, doc);
+
+      doc.name = trimmed;
+      doc.fileName = `${nousSlug(trimmed)}.pdf`;
+    }
+
+    if (file) {
+      const stored = await storeUpload(file, doc.name);
+
+      await fileStore.remove(doc.fileId);
+
+      doc.fileId = stored.fileId;
+      doc.fileName = stored.fileName;
+      doc.originalFileName = file.name;
+      doc.fileSize = stored.fileSize;
+      doc.mimeType = stored.mimeType;
+      doc.updatedAt = new Date().toISOString();
+    }
+
+    if (kind === 'past-paper') {
+      if (rest.year !== undefined) doc.year = Number(rest.year) || doc.year;
+      if (rest.session !== undefined) doc.session = rest.session;
+      if (rest.type !== undefined) doc.type = rest.type;
+    }
+
+    writeDb(data);
+
+    return delay(clone(doc));
+  },
+
+  async setStatus(kind, path, docId, status) {
+    const data = await db();
+
+    const collection = docCollection(data, kind, path);
+
+    const doc = collection.find((item) => item.id === docId);
+
+    if (!doc) fail('PDF not found', 404);
+
+    if (![STATUS.active, STATUS.inactive].includes(status)) fail('Unknown status', 400);
+
+    doc.status = status;
+    writeDb(data);
+
+    return delay(clone(doc));
+  },
+
+  /** Documents have no children, so a delete really removes them. */
+  async remove(kind, path, docId) {
+    const data = await db();
+
+    const collection = docCollection(data, kind, path);
+
+    const doc = collection.find((item) => item.id === docId);
+
+    if (!doc) fail('PDF not found', 404);
+
+    await fileStore.remove(doc.fileId);
+
+    const index = collection.indexOf(doc);
+
+    collection.splice(index, 1);
+    writeDb(data);
+
+    return delay(true);
+  },
+
+  /**
+   * Flat list for the admin modules: every document of `kind`, wherever it
+   * lives, with its course / level / subject / chapter context attached.
+   */
+  async listAll(kind) {
+    const data = await db();
+
+    const rows = [];
+
+    walkDocs(data, (doc, chain) => {
+      if (kind && doc.kind !== kind) return;
+
+      const scope = chain.chapter ? 'chapter' : 'subject';
+
+      const path = {
+        courseId: chain.course.id,
+        levelId: chain.level.id,
+        subjectId: chain.subject.id,
+        ...(chain.chapter ? { chapterId: chain.chapter.id } : {}),
+      };
+
+      const ancestors = [chain.course, chain.level, chain.subject, chain.chapter].filter(Boolean);
+
+      rows.push({
+        ...clone(doc),
+        rowId: [...Object.values(path), doc.id].join('/'),
+        path,
+        scope,
+        courseName: chain.course.name,
+        levelName: chain.level.name,
+        subjectName: chain.subject.name,
+        chapterName: chain.chapter?.name ?? null,
+        // active in its own right, but hidden if any ancestor is switched off
+        effectiveStatus:
+          doc.status === STATUS.active && isVisible(ancestors) ? STATUS.active : STATUS.inactive,
+        hiddenByParent: doc.status === STATUS.active && !isVisible(ancestors),
+      });
     });
 
-    writeDb(data);
-
-    return delay(clone(paper));
+    return delay(rows);
   },
+};
 
-  async deleteChapterPaper(programId, levelId, subjectId, chapterId, paperId) {
-    const data = await db();
-    const { chapter } = locate(data, { programId, levelId, subjectId, chapterId });
+// ----------------------------------------------------------------------
+// Notes (student uploads)
+// ----------------------------------------------------------------------
 
-    chapter.pastPapers = (chapter.pastPapers ?? []).filter((item) => item.id !== paperId);
-    writeDb(data);
+export const notesApi = {
+  /**
+   * The one write a student is allowed. The upload lands on the chapter, is
+   * active straight away and is therefore visible to every student - not just
+   * whoever uploaded it.
+   */
+  async upload(path, { name, file }, user) {
+    if (!path?.chapterId) fail('Notes belong to a chapter', 400);
 
-    return delay(true);
-  },
-
-  // Resources ---------------------------------------------------------
-
-  async createResource(programId, levelId, subjectId, chapterId, values) {
-    const data = await db();
-    const { chapter } = locate(data, { programId, levelId, subjectId, chapterId });
-
-    chapter.resources = chapter.resources ?? [];
-
-    const resource = {
-      id: uniqueId(chapter.resources, values.name, 'resource'),
-      name: String(values.name).trim(),
-      icon: values.icon || DEFAULT_RESOURCES[0].icon,
-      description: values.description || '',
-      content: values.content || '',
-    };
-
-    chapter.resources.push(resource);
-    writeDb(data);
-
-    return delay(clone(resource));
-  },
-
-  async updateResource(programId, levelId, subjectId, chapterId, resourceId, values) {
-    const data = await db();
-    const { chapter } = locate(data, { programId, levelId, subjectId, chapterId });
-
-    const resource = chapter.resources?.find((item) => item.id === resourceId);
-
-    if (!resource) fail('Resource not found', 404);
-
-    Object.assign(resource, values);
-    writeDb(data);
-
-    return delay(clone(resource));
-  },
-
-  async deleteResource(programId, levelId, subjectId, chapterId, resourceId) {
-    const data = await db();
-    const { chapter } = locate(data, { programId, levelId, subjectId, chapterId });
-
-    chapter.resources = (chapter.resources ?? []).filter((item) => item.id !== resourceId);
-    writeDb(data);
-
-    return delay(true);
+    return docsApi.create('note', path, {
+      name,
+      file,
+      status: STATUS.active,
+      uploadedBy: user ? { id: user.id, name: user.name, role: user.role } : undefined,
+    });
   },
 };

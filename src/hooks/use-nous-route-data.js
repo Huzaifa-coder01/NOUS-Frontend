@@ -2,37 +2,43 @@ import { useParams } from 'react-router-dom';
 
 import { useNousData } from 'src/context/nous-data';
 
+import { sectionByRouteId } from 'src/_mock/_nous';
+
 // ----------------------------------------------------------------------
 
 /**
- * Resolves the `/programs/:programId/:levelId/:subjectId/:chapterId/:resourceId`
- * url segments against the live catalog. `notFound` is true as soon as a segment
- * present in the url does not match a record.
+ * Resolves the `/:courseId/:levelId/:subjectId/:chapterId/:sectionId` url
+ * segments against the catalog.
+ *
+ * `scope` decides which tree is walked, and that is the whole visibility story
+ * for the student site: on `student` the hook only ever sees active, undeleted
+ * records, so an item switched off in the admin panel resolves to `notFound`
+ * and the page redirects instead of rendering.
  */
-export function useNousRouteData() {
-  const { programId, levelId, subjectId, chapterId, resourceId } = useParams();
+export function useNousRouteData({ scope = 'student' } = {}) {
+  const { courseId, levelId, subjectId, chapterId, sectionId } = useParams();
 
-  const { programs, loading } = useNousData();
+  const { activeCourses, adminCourses, loading } = useNousData();
 
-  const program = programId ? programs.find((item) => item.id === programId) : undefined;
+  const courses = scope === 'admin' ? adminCourses : activeCourses;
 
-  const level = levelId ? program?.levels.find((item) => item.id === levelId) : undefined;
+  const course = courseId ? courses.find((item) => item.id === courseId) : undefined;
+
+  const level = levelId ? course?.levels.find((item) => item.id === levelId) : undefined;
 
   const subject = subjectId ? level?.subjects.find((item) => item.id === subjectId) : undefined;
 
   const chapter = chapterId ? subject?.chapters.find((item) => item.id === chapterId) : undefined;
 
-  const resource = resourceId
-    ? chapter?.resources?.find((item) => item.id === resourceId)
-    : undefined;
+  const section = sectionId ? sectionByRouteId(sectionId) : undefined;
 
   const notFound =
     !loading &&
-    ((!!programId && !program) ||
+    ((!!courseId && !course) ||
       (!!levelId && !level) ||
       (!!subjectId && !subject) ||
       (!!chapterId && !chapter) ||
-      (!!resourceId && !resource));
+      (!!sectionId && !section));
 
-  return { loading, program, level, subject, chapter, resource, notFound };
+  return { loading, course, level, subject, chapter, section, notFound };
 }

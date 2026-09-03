@@ -13,7 +13,7 @@ import { AdminSubjectView } from 'src/sections/admin/view';
 // ----------------------------------------------------------------------
 
 export default function Page() {
-  const { loading, program, level, subject, notFound } = useNousRouteData();
+  const { loading, course, level, subject, notFound } = useNousRouteData({ scope: 'admin' });
 
   if (notFound) {
     return <Navigate to={paths.admin.catalog.root} replace />;
@@ -29,7 +29,7 @@ export default function Page() {
         <title> {`${subject.name} - Admin - ${CONFIG.site.name}`}</title>
       </Helmet>
 
-      <AdminSubjectView program={program} level={level} subject={subject} />
+      <AdminSubjectView course={course} level={level} subject={subject} />
     </>
   );
 }

@@ -30,7 +30,11 @@ import { ProfileCover } from '../profile-cover';
 const TABS = [
   { value: 'profile', label: 'Profile', icon: <Iconify icon="solar:user-id-bold" width={24} /> },
   { value: 'catalog', label: 'Catalog', icon: <Iconify icon="solar:notebook-bold" width={24} /> },
-  { value: 'team', label: 'Team', icon: <Iconify icon="solar:users-group-rounded-bold" width={24} /> },
+  {
+    value: 'team',
+    label: 'Team',
+    icon: <Iconify icon="solar:users-group-rounded-bold" width={24} />,
+  },
 ];
 
 // ----------------------------------------------------------------------
@@ -66,7 +70,7 @@ function StatCard({ label, value }) {
 export function UserProfileView() {
   const { user } = useAuthContext();
 
-  const { programs } = useNousData();
+  const { adminCourses } = useNousData();
 
   const tabs = useTabs('profile');
 
@@ -80,18 +84,26 @@ export function UserProfileView() {
   }, []);
 
   const stats = useMemo(() => {
-    const levels = programs.flatMap((program) => program.levels);
+    const levels = adminCourses.flatMap((course) => course.levels);
     const subjects = levels.flatMap((level) => level.subjects);
     const chapters = subjects.flatMap((subject) => subject.chapters);
-    const resources = chapters.flatMap((chapter) => chapter.resources ?? []);
+
+    const pdfs = [
+      ...subjects.flatMap((subject) => subject.pastPapers ?? []),
+      ...chapters.flatMap((chapter) => [
+        ...(chapter.pastPapers ?? []),
+        ...(chapter.syllabus ?? []),
+        ...(chapter.notes ?? []),
+      ]),
+    ];
 
     return {
-      programs: programs.length,
+      courses: adminCourses.length,
       subjects: subjects.length,
       chapters: chapters.length,
-      published: resources.filter((resource) => resource.content?.trim()).length,
+      pdfs: pdfs.length,
     };
-  }, [programs]);
+  }, [adminCourses]);
 
   const renderProfile = (
     <Grid container spacing={3}>
@@ -121,7 +133,7 @@ export function UserProfileView() {
       <Grid xs={12} md={8}>
         <Grid container spacing={3}>
           <Grid xs={6} sm={3}>
-            <StatCard label="Programs" value={stats.programs} />
+            <StatCard label="Courses" value={stats.courses} />
           </Grid>
           <Grid xs={6} sm={3}>
             <StatCard label="Subjects" value={stats.subjects} />
@@ -130,7 +142,7 @@ export function UserProfileView() {
             <StatCard label="Chapters" value={stats.chapters} />
           </Grid>
           <Grid xs={6} sm={3}>
-            <StatCard label="Published" value={stats.published} />
+            <StatCard label="PDFs" value={stats.pdfs} />
           </Grid>
 
           <Grid xs={12}>
@@ -140,9 +152,9 @@ export function UserProfileView() {
               </Typography>
 
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                As an administrator you control the entire catalog — programs, levels, subjects,
+                As an administrator you control the entire catalog — courses, levels, subjects,
                 chapters and the syllabus, notes and past papers students read — plus every account
-                and the public site branding.
+                and the site branding. Students can only upload notes.
               </Typography>
             </Card>
           </Grid>
@@ -153,22 +165,24 @@ export function UserProfileView() {
 
   const renderCatalog = (
     <Card>
-      {programs.map((program, index) => (
-        <Box key={program.id}>
+      {adminCourses.map((course, index) => (
+        <Box key={course.id}>
           {index > 0 && <Divider />}
 
           <Stack direction="row" alignItems="center" spacing={2} sx={{ p: 3 }}>
-            <Box sx={{ fontSize: 28 }}>{program.icon}</Box>
+            <Box sx={{ fontSize: 28 }}>{course.icon}</Box>
 
             <Box sx={{ flexGrow: 1 }}>
-              <Typography variant="subtitle1">{program.name}</Typography>
+              <Typography variant="subtitle1">{course.name}</Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                {program.levels.length} levels ·{' '}
-                {program.levels.reduce((total, level) => total + level.subjects.length, 0)} subjects
+                {course.levels.length} levels ·{' '}
+                {course.levels.reduce((total, level) => total + level.subjects.length, 0)} subjects
               </Typography>
             </Box>
 
-            <Label color="info">{program.id}</Label>
+            <Label color={course.status === 'active' ? 'success' : 'default'}>
+              {course.status}
+            </Label>
           </Stack>
         </Box>
       ))}

@@ -44,9 +44,9 @@ function Header() {
           display: 'inline-block',
         }}
       >
-        Study
+        NO
         <Box component="span" sx={{ color: NOUS_COLORS.accent }}>
-          Hub
+          US
         </Box>
       </Box>
     </Box>

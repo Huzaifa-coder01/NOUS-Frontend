@@ -1,45 +1,54 @@
 import { paths } from 'src/routes/paths';
 
 import { nousAccent } from 'src/theme/palette';
+import { subjectTotals } from 'src/utils/catalog';
 
 import { NousCard, PageTitle, BackButton, Breadcrumbs } from '../components';
-import { CardsGrid } from '../styles';
+import { CardsGrid, EmptyState } from '../styles';
 
 // ----------------------------------------------------------------------
 
-export function NousLevelView({ program, level }) {
+/** Step 3: the active subjects for the selected course + level. */
+export function NousLevelView({ course, level }) {
   return (
     <>
-      <BackButton href={paths.nous.program(program.id)} />
+      <BackButton href={paths.nous.course(course.id)} />
 
       <Breadcrumbs
         links={[
           { name: 'Home', href: paths.nous.root },
-          { name: program.name, href: paths.nous.program(program.id) },
+          { name: course.name, href: paths.nous.course(course.id) },
           { name: level.name },
         ]}
       />
 
       <PageTitle title={level.name} subtitle="Select a subject" />
 
-      <CardsGrid>
-        {level.subjects.map((subject, index) => {
-          const papers = (subject.pastPapers ?? []).length;
+      {level.subjects.length ? (
+        <CardsGrid>
+          {level.subjects.map((subject, index) => {
+            const { chapters, pastPapers } = subjectTotals(subject);
 
-          return (
-            <NousCard
-              key={subject.id}
-              href={paths.nous.subject(program.id, level.id, subject.id)}
-              icon="📘"
-              title={subject.name}
-              description="View chapters"
-              meta={`${subject.chapters.length} chapters${papers ? ` · ${papers} papers` : ''}`}
-              accent={nousAccent(index)}
-              action="Study"
-            />
-          );
-        })}
-      </CardsGrid>
+            return (
+              <NousCard
+                key={subject.id}
+                href={paths.nous.subject(course.id, level.id, subject.id)}
+                icon={'\u{1F4D8}'}
+                title={subject.name}
+                description="Chapters and past papers"
+                meta={`${chapters} chapters${pastPapers ? ` · ${pastPapers} past papers` : ''}`}
+                accent={nousAccent(index)}
+                action="Study"
+              />
+            );
+          })}
+        </CardsGrid>
+      ) : (
+        <EmptyState>
+          <strong>No subjects available yet</strong>
+          {`Subjects for ${level.name} appear here once an administrator publishes them.`}
+        </EmptyState>
+      )}
     </>
   );
 }

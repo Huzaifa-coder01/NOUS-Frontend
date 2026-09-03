@@ -10,11 +10,12 @@ import { AuthGuard } from 'src/auth/guard';
 // ----------------------------------------------------------------------
 
 const HomePage = lazy(() => import('src/pages/nous/home'));
-const ProgramPage = lazy(() => import('src/pages/nous/program'));
+const CoursePage = lazy(() => import('src/pages/nous/course'));
 const LevelPage = lazy(() => import('src/pages/nous/level'));
 const SubjectPage = lazy(() => import('src/pages/nous/subject'));
+const SubjectPapersPage = lazy(() => import('src/pages/nous/subject-papers'));
 const ChapterPage = lazy(() => import('src/pages/nous/chapter'));
-const ResourcePage = lazy(() => import('src/pages/nous/resource'));
+const SectionPage = lazy(() => import('src/pages/nous/section'));
 
 // ----------------------------------------------------------------------
 
@@ -33,16 +34,22 @@ export const nousRoutes = [
     children: [
       { path: '/', element: <HomePage /> },
       {
-        path: 'programs',
+        path: 'courses',
         children: [
           { index: true, element: <HomePage /> },
-          { path: ':programId', element: <ProgramPage /> },
-          { path: ':programId/:levelId', element: <LevelPage /> },
-          { path: ':programId/:levelId/:subjectId', element: <SubjectPage /> },
-          { path: ':programId/:levelId/:subjectId/:chapterId', element: <ChapterPage /> },
+          { path: ':courseId', element: <CoursePage /> },
+          { path: ':courseId/:levelId', element: <LevelPage /> },
+          { path: ':courseId/:levelId/:subjectId', element: <SubjectPage /> },
           {
-            path: ':programId/:levelId/:subjectId/:chapterId/:resourceId',
-            element: <ResourcePage />,
+            // past papers for the subject itself - ranks above :chapterId
+            path: ':courseId/:levelId/:subjectId/past-papers',
+            element: <SubjectPapersPage />,
+          },
+          { path: ':courseId/:levelId/:subjectId/:chapterId', element: <ChapterPage /> },
+          {
+            // syllabus | notes | past-papers inside a chapter
+            path: ':courseId/:levelId/:subjectId/:chapterId/:sectionId',
+            element: <SectionPage />,
           },
         ],
       },

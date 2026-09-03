@@ -10,11 +10,10 @@ import { LoadingScreen } from 'src/components/loading-screen';
 
 import { NousSubjectView } from 'src/sections/nous/view';
 
-
 // ----------------------------------------------------------------------
 
 export default function Page() {
-  const { loading, program, level, subject, notFound } = useNousRouteData();
+  const { loading, course, level, subject, notFound } = useNousRouteData();
 
   if (notFound) {
     return <Navigate to={paths.nous.root} replace />;
@@ -30,7 +29,7 @@ export default function Page() {
         <title> {`${subject.name} - ${CONFIG.site.name}`}</title>
       </Helmet>
 
-      <NousSubjectView program={program} level={level} subject={subject} />
+      <NousSubjectView course={course} level={level} subject={subject} />
     </>
   );
 }

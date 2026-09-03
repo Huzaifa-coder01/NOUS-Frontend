@@ -13,7 +13,7 @@ const NotFoundPage = lazy(() => import('src/pages/error/not-found'));
 
 export function Router() {
   return useRoutes([
-    // Public StudyHub site
+    // Public NOUS site
     ...nousRoutes,
 
     // Sign in / sign up

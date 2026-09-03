@@ -107,8 +107,9 @@ export function AdminSettingsView() {
           </Typography>
 
           <Typography sx={{ mb: 2, fontSize: 14, color: 'text.secondary' }}>
-            The catalog, users and settings live in this browser&apos;s local storage. Restoring
-            wipes every change and re-seeds the original CA &amp; ACCA data.
+            The catalog, users and settings live in this browser&apos;s local storage, and uploaded
+            PDFs in IndexedDB. Restoring wipes every change and re-seeds the original CA &amp; ACCA
+            data.
           </Typography>
 
           <Button variant="outlined" color="error" onClick={() => setConfirmReset(true)}>
@@ -120,7 +121,7 @@ export function AdminSettingsView() {
       <ConfirmDialog
         open={confirmReset}
         title="Restore demo data"
-        content="Every program, chapter, resource and account you created will be deleted."
+        content="Every course, chapter, PDF and account you created will be deleted, including uploaded files."
         onClose={() => setConfirmReset(false)}
         action={
           <Button variant="contained" color="error" onClick={handleReset}>

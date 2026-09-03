@@ -8,28 +8,28 @@ import { useNousRouteData } from 'src/hooks/use-nous-route-data';
 
 import { LoadingScreen } from 'src/components/loading-screen';
 
-import { AdminChapterPapersView } from 'src/sections/admin/view';
+import { AdminCourseView } from 'src/sections/admin/view';
 
 // ----------------------------------------------------------------------
 
 export default function Page() {
-  const { loading, program, level, subject, chapter, notFound } = useNousRouteData();
+  const { loading, course, notFound } = useNousRouteData({ scope: 'admin' });
 
   if (notFound) {
     return <Navigate to={paths.admin.catalog.root} replace />;
   }
 
-  if (loading || !chapter) {
+  if (loading || !course) {
     return <LoadingScreen />;
   }
 
   return (
     <>
       <Helmet>
-        <title> {`Chapter past papers - Admin - ${CONFIG.site.name}`}</title>
+        <title> {`${course.name} - Admin - ${CONFIG.site.name}`}</title>
       </Helmet>
 
-      <AdminChapterPapersView program={program} level={level} subject={subject} chapter={chapter} />
+      <AdminCourseView course={course} />
     </>
   );
 }

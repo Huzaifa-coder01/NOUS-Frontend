@@ -9,7 +9,7 @@ export function ChapterCard({ href, chapter, index }) {
 
       <div style={{ flexGrow: 1, minWidth: 0 }}>
         <span className="chapter-number">{chapter.name}</span>
-        <strong>{chapter.title}</strong>
+        <strong>{chapter.title || chapter.name}</strong>
       </div>
 
       <div className="chapter-go">→</div>

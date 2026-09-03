@@ -2,20 +2,22 @@ import { Helmet } from 'react-helmet-async';
 
 import { CONFIG } from 'src/config-global';
 
-import { AdminPastPapersView } from 'src/sections/admin/view';
+import { AdminAllDocsView } from 'src/sections/admin/view';
 
 // ----------------------------------------------------------------------
-
-const metadata = { title: `Past papers - Admin - ${CONFIG.site.name}` };
 
 export default function Page() {
   return (
     <>
       <Helmet>
-        <title> {metadata.title}</title>
+        <title> {`Past papers - Admin - ${CONFIG.site.name}`}</title>
       </Helmet>
 
-      <AdminPastPapersView />
+      <AdminAllDocsView
+        kind="past-paper"
+        heading="Past papers"
+        subheading="Every past paper in the system. Add new ones from the subject or chapter they belong to."
+      />
     </>
   );
 }

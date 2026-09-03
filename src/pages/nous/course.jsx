@@ -8,35 +8,28 @@ import { useNousRouteData } from 'src/hooks/use-nous-route-data';
 
 import { LoadingScreen } from 'src/components/loading-screen';
 
-import { NousResourceView } from 'src/sections/nous/view';
-
+import { NousCourseView } from 'src/sections/nous/view';
 
 // ----------------------------------------------------------------------
 
 export default function Page() {
-  const { loading, program, level, subject, chapter, resource, notFound } = useNousRouteData();
+  const { loading, course, notFound } = useNousRouteData();
 
   if (notFound) {
     return <Navigate to={paths.nous.root} replace />;
   }
 
-  if (loading || !resource) {
+  if (loading || !course) {
     return <LoadingScreen />;
   }
 
   return (
     <>
       <Helmet>
-        <title> {`${resource.name} - ${subject.name} - ${CONFIG.site.name}`}</title>
+        <title> {`${course.name} - ${CONFIG.site.name}`}</title>
       </Helmet>
 
-      <NousResourceView
-        program={program}
-        level={level}
-        subject={subject}
-        chapter={chapter}
-        resource={resource}
-      />
+      <NousCourseView course={course} />
     </>
   );
 }

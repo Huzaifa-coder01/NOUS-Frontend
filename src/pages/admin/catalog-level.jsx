@@ -13,7 +13,7 @@ import { AdminLevelView } from 'src/sections/admin/view';
 // ----------------------------------------------------------------------
 
 export default function Page() {
-  const { loading, program, level, notFound } = useNousRouteData();
+  const { loading, course, level, notFound } = useNousRouteData({ scope: 'admin' });
 
   if (notFound) {
     return <Navigate to={paths.admin.catalog.root} replace />;
@@ -29,7 +29,7 @@ export default function Page() {
         <title> {`${level.name} - Admin - ${CONFIG.site.name}`}</title>
       </Helmet>
 
-      <AdminLevelView program={program} level={level} />
+      <AdminLevelView course={course} level={level} />
     </>
   );
 }

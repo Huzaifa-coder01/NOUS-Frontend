@@ -10,11 +10,10 @@ import { LoadingScreen } from 'src/components/loading-screen';
 
 import { NousLevelView } from 'src/sections/nous/view';
 
-
 // ----------------------------------------------------------------------
 
 export default function Page() {
-  const { loading, program, level, notFound } = useNousRouteData();
+  const { loading, course, level, notFound } = useNousRouteData();
 
   if (notFound) {
     return <Navigate to={paths.nous.root} replace />;
@@ -30,7 +29,7 @@ export default function Page() {
         <title> {`${level.name} - ${CONFIG.site.name}`}</title>
       </Helmet>
 
-      <NousLevelView program={program} level={level} />
+      <NousLevelView course={course} level={level} />
     </>
   );
 }

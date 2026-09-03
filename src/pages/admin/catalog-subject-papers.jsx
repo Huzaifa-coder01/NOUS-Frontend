@@ -13,7 +13,7 @@ import { AdminSubjectPapersView } from 'src/sections/admin/view';
 // ----------------------------------------------------------------------
 
 export default function Page() {
-  const { loading, program, level, subject, chapter, notFound } = useNousRouteData();
+  const { loading, course, level, subject, notFound } = useNousRouteData({ scope: 'admin' });
 
   if (notFound) {
     return <Navigate to={paths.admin.catalog.root} replace />;
@@ -26,10 +26,10 @@ export default function Page() {
   return (
     <>
       <Helmet>
-        <title> {`Past papers - Admin - ${CONFIG.site.name}`}</title>
+        <title> {`Past papers - ${subject.name} - Admin - ${CONFIG.site.name}`}</title>
       </Helmet>
 
-      <AdminSubjectPapersView program={program} level={level} subject={subject} />
+      <AdminSubjectPapersView course={course} level={level} subject={subject} />
     </>
   );
 }

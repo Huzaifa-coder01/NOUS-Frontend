@@ -21,7 +21,7 @@ export function Section({
   title = 'Welcome back.',
   subtitle = `Everything you need for CA & ACCA`,
   description = 'Syllabus, notes and past papers for every chapter — organized by program, level and subject.',
-  note = 'Sign in to unlock chapter resources.',
+  note = 'Sign in to unlock syllabus, notes and past papers.',
   ...other
 }) {
   const theme = useTheme();
@@ -157,9 +157,9 @@ export function Section({
         </Box>
       </Box>
 
-      <Typography sx={{ zIndex: 1, mt: 3, fontSize: '0.875rem', color: white(0.58) }}>
-        {`© ${new Date().getFullYear()} ${CONFIG.site.name}. All rights reserved.`}
-      </Typography>
+      <Typography
+        sx={{ zIndex: 1, mt: 3, fontSize: '0.875rem', color: white(0.58) }}
+      >{`© ${new Date().getFullYear()} ${CONFIG.site.name}. All rights reserved.`}</Typography>
     </Box>
   );
 }

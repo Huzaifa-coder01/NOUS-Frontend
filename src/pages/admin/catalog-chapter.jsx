@@ -13,7 +13,9 @@ import { AdminChapterView } from 'src/sections/admin/view';
 // ----------------------------------------------------------------------
 
 export default function Page() {
-  const { loading, program, level, subject, chapter, notFound } = useNousRouteData();
+  const { loading, course, level, subject, chapter, notFound } = useNousRouteData({
+    scope: 'admin',
+  });
 
   if (notFound) {
     return <Navigate to={paths.admin.catalog.root} replace />;
@@ -29,7 +31,7 @@ export default function Page() {
         <title> {`${chapter.name} - Admin - ${CONFIG.site.name}`}</title>
       </Helmet>
 
-      <AdminChapterView program={program} level={level} subject={subject} chapter={chapter} />
+      <AdminChapterView course={course} level={level} subject={subject} chapter={chapter} />
     </>
   );
 }

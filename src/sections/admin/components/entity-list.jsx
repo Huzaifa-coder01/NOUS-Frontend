@@ -1,8 +1,10 @@
 import { useState, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
+import Tab from '@mui/material/Tab';
 import Chip from '@mui/material/Chip';
 import Card from '@mui/material/Card';
+import Tabs from '@mui/material/Tabs';
 import Table from '@mui/material/Table';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
@@ -18,9 +20,11 @@ import InputAdornment from '@mui/material/InputAdornment';
 import { useBoolean } from 'src/hooks/use-boolean';
 import { useSetState } from 'src/hooks/use-set-state';
 
+import { STATUS } from 'src/_mock/_nous';
 import { DashboardContent } from 'src/layouts/dashboard';
 
 import { toast } from 'src/components/snackbar';
+import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
 import { ConfirmDialog } from 'src/components/custom-dialog';
@@ -39,15 +43,24 @@ import {
 } from 'src/components/table';
 
 import { EntityDialog } from './entity-dialog';
+import { StatusSwitch } from './status-switch';
 
 // ----------------------------------------------------------------------
 
+const STATUS_TABS = [
+  { value: 'all', label: 'All' },
+  { value: STATUS.active, label: 'Active' },
+  { value: STATUS.inactive, label: 'Inactive' },
+];
+
 /**
  * The template's list-page pattern (breadcrumbs → card → search toolbar →
- * filter chips → sortable, selectable table → pagination) wired to one entity.
+ * status tabs → filter chips → sortable, selectable table → pagination) wired
+ * to one entity.
  *
  * Every catalog CRUD screen renders through this so they all behave the same:
- * search, sort, multi-select delete, dense mode and pagination come for free.
+ * search, status filtering, activate/deactivate, delete and pagination come for
+ * free and stay consistent.
  */
 export function EntityList({
   heading,
@@ -57,6 +70,7 @@ export function EntityList({
   searchFields = ['name'],
   searchPlaceholder = 'Search...',
   createLabel,
+  editLabel,
   fields,
   emptyValues,
   toValues,
@@ -65,9 +79,14 @@ export function EntityList({
   onDelete,
   onMove,
   onOpen,
+  onToggleStatus,
+  cascades = false,
+  deleteNote,
   openLabel = 'Manage',
   describe = (row) => row.name,
+  statusOf = (row) => row.status,
   extraActions,
+  toolbar,
 }) {
   const table = useTable({ defaultRowsPerPage: 10 });
 
@@ -76,18 +95,20 @@ export function EntityList({
   const [dialog, setDialog] = useState(null);
   const [confirmRow, setConfirmRow] = useState(null);
 
-  const filters = useSetState({ query: '' });
+  const filters = useSetState({ query: '', status: 'all' });
 
   const dataFiltered = applyFilter({
     inputData: rows,
     comparator: getComparator(table.order, table.orderBy),
     query: filters.state.query,
+    status: filters.state.status,
     searchFields,
+    statusOf,
   });
 
   const dataInPage = rowInPage(dataFiltered, table.page, table.rowsPerPage);
 
-  const canReset = !!filters.state.query;
+  const canReset = !!filters.state.query || filters.state.status !== 'all';
 
   const notFound = !dataFiltered.length;
 
@@ -95,6 +116,14 @@ export function EntityList({
     (event) => {
       table.onResetPage();
       filters.setState({ query: event.target.value });
+    },
+    [filters, table]
+  );
+
+  const handleStatusTab = useCallback(
+    (event, value) => {
+      table.onResetPage();
+      filters.setState({ status: value });
     },
     [filters, table]
   );
@@ -127,7 +156,7 @@ export function EntityList({
   const handleDeleteRows = async () => {
     confirmMany.onFalse();
 
-    const selectedRows = rows.filter((row) => table.selected.includes(row.id));
+    const selectedRows = rows.filter((row) => table.selected.includes(rowKey(row)));
 
     const results = await Promise.allSettled(selectedRows.map((row) => onDelete(row)));
 
@@ -155,8 +184,15 @@ export function EntityList({
 
   const tableHead = [
     ...columns.map((column) => ({ id: column.id, label: column.label, width: column.width })),
+    ...(onToggleStatus ? [{ id: 'status', label: 'Status', width: 160 }] : []),
     { id: '', width: 140 },
   ];
+
+  const counts = {
+    all: rows.length,
+    [STATUS.active]: rows.filter((row) => statusOf(row) === STATUS.active).length,
+    [STATUS.inactive]: rows.filter((row) => statusOf(row) !== STATUS.active).length,
+  };
 
   return (
     <DashboardContent>
@@ -178,6 +214,33 @@ export function EntityList({
       />
 
       <Card>
+        <Tabs
+          value={filters.state.status}
+          onChange={handleStatusTab}
+          sx={{ px: 2.5, boxShadow: (theme) => `inset 0 -2px 0 0 ${theme.palette.grey[500]}14` }}
+        >
+          {STATUS_TABS.map((tab) => (
+            <Tab
+              key={tab.value}
+              value={tab.value}
+              label={tab.label}
+              iconPosition="end"
+              icon={
+                <Label
+                  variant={tab.value === filters.state.status ? 'filled' : 'soft'}
+                  color={
+                    (tab.value === STATUS.active && 'success') ||
+                    (tab.value === STATUS.inactive && 'default') ||
+                    'info'
+                  }
+                >
+                  {counts[tab.value]}
+                </Label>
+              }
+            />
+          ))}
+        </Tabs>
+
         <Stack spacing={2} sx={{ p: 2.5 }} direction={{ xs: 'column', md: 'row' }}>
           <TextField
             fullWidth
@@ -196,8 +259,14 @@ export function EntityList({
           {extraActions}
         </Stack>
 
+        {toolbar}
+
         {canReset && (
-          <FiltersResult totalResults={dataFiltered.length} onReset={() => filters.setState({ query: '' })} sx={{ p: 2.5, pt: 0 }}>
+          <FiltersResult
+            totalResults={dataFiltered.length}
+            onReset={() => filters.setState({ query: '', status: 'all' })}
+            sx={{ p: 2.5, pt: 0 }}
+          >
             <FiltersBlock label="Search:" isShow={!!filters.state.query}>
               <Chip
                 {...chipProps}
@@ -205,6 +274,17 @@ export function EntityList({
                 onDelete={() => {
                   table.onResetPage();
                   filters.setState({ query: '' });
+                }}
+              />
+            </FiltersBlock>
+
+            <FiltersBlock label="Status:" isShow={filters.state.status !== 'all'}>
+              <Chip
+                {...chipProps}
+                label={filters.state.status}
+                onDelete={() => {
+                  table.onResetPage();
+                  filters.setState({ status: 'all' });
                 }}
               />
             </FiltersBlock>
@@ -216,18 +296,15 @@ export function EntityList({
             dense={table.dense}
             numSelected={table.selected.length}
             rowCount={dataFiltered.length}
-            onSelectAllRows={(checked) =>
-              table.onSelectAllRows(
-                checked,
-                dataFiltered.map((row) => row.id)
-              )
-            }
+            onSelectAllRows={(checked) => table.onSelectAllRows(checked, dataFiltered.map(rowKey))}
             action={
-              <Tooltip title="Delete">
-                <IconButton color="primary" onClick={confirmMany.onTrue}>
-                  <Iconify icon="solar:trash-bin-trash-bold" />
-                </IconButton>
-              </Tooltip>
+              onDelete && (
+                <Tooltip title="Delete">
+                  <IconButton color="primary" onClick={confirmMany.onTrue}>
+                    <Iconify icon="solar:trash-bin-trash-bold" />
+                  </IconButton>
+                </Tooltip>
+              )
             }
           />
 
@@ -241,10 +318,7 @@ export function EntityList({
                 numSelected={table.selected.length}
                 onSort={table.onSort}
                 onSelectAllRows={(checked) =>
-                  table.onSelectAllRows(
-                    checked,
-                    dataFiltered.map((row) => row.id)
-                  )
+                  table.onSelectAllRows(checked, dataFiltered.map(rowKey))
                 }
               />
 
@@ -255,20 +329,39 @@ export function EntityList({
                     table.page * table.rowsPerPage + table.rowsPerPage
                   )
                   .map((row, index) => (
-                    <TableRow key={row.id} hover selected={table.selected.includes(row.id)}>
+                    <TableRow
+                      key={rowKey(row)}
+                      hover
+                      selected={table.selected.includes(rowKey(row))}
+                      sx={statusOf(row) === STATUS.active ? undefined : { opacity: 0.6 }}
+                    >
                       <TableCell padding="checkbox">
                         <Checkbox
-                          id={row.id}
-                          checked={table.selected.includes(row.id)}
-                          onClick={() => table.onSelectRow(row.id)}
+                          id={rowKey(row)}
+                          checked={table.selected.includes(rowKey(row))}
+                          onClick={() => table.onSelectRow(rowKey(row))}
                         />
                       </TableCell>
 
                       {columns.map((column) => (
-                        <TableCell key={column.id} sx={{ whiteSpace: column.nowrap ? 'nowrap' : undefined }}>
+                        <TableCell
+                          key={column.id}
+                          sx={{ whiteSpace: column.nowrap ? 'nowrap' : undefined }}
+                        >
                           {column.render ? column.render(row) : row[column.id]}
                         </TableCell>
                       ))}
+
+                      {onToggleStatus && (
+                        <TableCell>
+                          <StatusSwitch
+                            row={row}
+                            cascades={cascades}
+                            hiddenByParent={!!row.hiddenByParent}
+                            onToggle={onToggleStatus}
+                          />
+                        </TableCell>
+                      )}
 
                       <TableCell align="right">
                         <Stack direction="row" spacing={0.5} justifyContent="flex-end">
@@ -301,7 +394,10 @@ export function EntityList({
 
                           {onUpdate && (
                             <Tooltip title="Edit">
-                              <IconButton size="small" onClick={() => setDialog({ mode: 'edit', row })}>
+                              <IconButton
+                                size="small"
+                                onClick={() => setDialog({ mode: 'edit', row })}
+                              >
                                 <Iconify icon="solar:pen-bold" />
                               </IconButton>
                             </Tooltip>
@@ -309,7 +405,11 @@ export function EntityList({
 
                           {onDelete && (
                             <Tooltip title="Delete">
-                              <IconButton size="small" color="error" onClick={() => setConfirmRow(row)}>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => setConfirmRow(row)}
+                              >
                                 <Iconify icon="solar:trash-bin-trash-bold" />
                               </IconButton>
                             </Tooltip>
@@ -350,7 +450,9 @@ export function EntityList({
       {!!fields && (
         <EntityDialog
           open={!!dialog}
-          title={dialog?.mode === 'edit' ? `Edit ${heading.toLowerCase()}` : createLabel}
+          title={
+            dialog?.mode === 'edit' ? editLabel ?? `Edit ${heading.toLowerCase()}` : createLabel
+          }
           fields={typeof fields === 'function' ? fields(dialog?.mode === 'edit') : fields}
           initialValues={dialog?.mode === 'edit' ? toValues(dialog.row) : emptyValues}
           onClose={() => setDialog(null)}
@@ -362,7 +464,20 @@ export function EntityList({
         open={!!confirmRow}
         onClose={() => setConfirmRow(null)}
         title="Delete"
-        content={confirmRow ? `"${describe(confirmRow)}" will be permanently removed.` : ''}
+        content={
+          confirmRow ? (
+            <>
+              <strong>{describe(confirmRow)}</strong> will be removed.
+              {!!deleteNote && (
+                <Box component="span" sx={{ display: 'block', mt: 1 }}>
+                  {deleteNote}
+                </Box>
+              )}
+            </>
+          ) : (
+            ''
+          )
+        }
         action={
           <Button variant="contained" color="error" onClick={handleDeleteRow}>
             Delete
@@ -377,6 +492,11 @@ export function EntityList({
         content={
           <>
             Are you sure want to delete <strong> {table.selected.length} </strong> items?
+            {!!deleteNote && (
+              <Box component="span" sx={{ display: 'block', mt: 1 }}>
+                {deleteNote}
+              </Box>
+            )}
           </>
         }
         action={
@@ -391,7 +511,12 @@ export function EntityList({
 
 // ----------------------------------------------------------------------
 
-function applyFilter({ inputData, comparator, query, searchFields }) {
+/** Flattened admin modules carry a composite `rowId`; catalog rows use `id`. */
+function rowKey(row) {
+  return row.rowId ?? row.id;
+}
+
+function applyFilter({ inputData, comparator, query, status, searchFields, statusOf }) {
   const stabilized = inputData.map((el, index) => [el, index]);
 
   stabilized.sort((a, b) => {
@@ -402,11 +527,21 @@ function applyFilter({ inputData, comparator, query, searchFields }) {
 
   let data = stabilized.map((el) => el[0]);
 
+  if (status !== 'all') {
+    data = data.filter((row) =>
+      status === STATUS.active ? statusOf(row) === STATUS.active : statusOf(row) !== STATUS.active
+    );
+  }
+
   if (query) {
     const needle = query.toLowerCase();
 
     data = data.filter((row) =>
-      searchFields.some((field) => String(row[field] ?? '').toLowerCase().includes(needle))
+      searchFields.some((field) =>
+        String(row[field] ?? '')
+          .toLowerCase()
+          .includes(needle)
+      )
     );
   }
 

@@ -39,7 +39,7 @@ export const authRoutes = [
       {
         path: 'sign-up',
         element: withLayout(<SignUpPage />, {
-          eyebrow: 'Join StudyHub',
+          eyebrow: 'Join NOUS',
           title: 'Start studying.',
           subtitle: 'Free access to every chapter',
           description:

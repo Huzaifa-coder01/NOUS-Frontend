@@ -10,11 +10,10 @@ import { LoadingScreen } from 'src/components/loading-screen';
 
 import { NousChapterView } from 'src/sections/nous/view';
 
-
 // ----------------------------------------------------------------------
 
 export default function Page() {
-  const { loading, program, level, subject, chapter, notFound } = useNousRouteData();
+  const { loading, course, level, subject, chapter, notFound } = useNousRouteData();
 
   if (notFound) {
     return <Navigate to={paths.nous.root} replace />;
@@ -30,7 +29,7 @@ export default function Page() {
         <title> {`${chapter.name} - ${subject.name} - ${CONFIG.site.name}`}</title>
       </Helmet>
 
-      <NousChapterView program={program} level={level} subject={subject} chapter={chapter} />
+      <NousChapterView course={course} level={level} subject={subject} chapter={chapter} />
     </>
   );
 }

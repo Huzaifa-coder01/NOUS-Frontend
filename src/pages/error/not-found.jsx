@@ -42,7 +42,7 @@ export default function Page() {
         </Typography>
 
         <Button variant="contained" size="large" component={RouterLink} href={paths.nous.root}>
-          Back to StudyHub
+          Back to NOUS
         </Button>
       </Box>
     </>
