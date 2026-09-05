@@ -1,9 +1,12 @@
 import 'src/global.css';
 
+import { Provider as ReduxProvider } from 'react-redux';
+import { PersistGate } from 'redux-persist/integration/react';
+
+import { store, persistor } from 'src/store';
 import { Router } from 'src/routes/sections';
 
 import { ThemeProvider } from 'src/theme/theme-provider';
-import { NousDataProvider } from 'src/context/nous-data';
 
 import { Snackbar } from 'src/components/snackbar';
 import { ProgressBar } from 'src/components/progress-bar';
@@ -16,19 +19,21 @@ import { AuthProvider } from 'src/auth/context/jwt';
 
 export default function App() {
   return (
-    <SettingsProvider settings={defaultSettings}>
-      <ThemeProvider>
-        <MotionLazy>
-          <AuthProvider>
-            <NousDataProvider>
-              <Snackbar />
-              <ProgressBar />
-              <SettingsDrawer />
-              <Router />
-            </NousDataProvider>
-          </AuthProvider>
-        </MotionLazy>
-      </ThemeProvider>
-    </SettingsProvider>
+    <ReduxProvider store={store}>
+      <PersistGate loading={null} persistor={persistor}>
+        <SettingsProvider settings={defaultSettings}>
+          <ThemeProvider>
+            <MotionLazy>
+              <AuthProvider>
+                <Snackbar />
+                <ProgressBar />
+                <SettingsDrawer />
+                <Router />
+              </AuthProvider>
+            </MotionLazy>
+          </ThemeProvider>
+        </SettingsProvider>
+      </PersistGate>
+    </ReduxProvider>
   );
 }

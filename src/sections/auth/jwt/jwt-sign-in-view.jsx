@@ -23,7 +23,7 @@ import { Form, Field } from 'src/components/hook-form';
 import { Iconify } from 'src/components/iconify';
 
 import { getLandingPath } from 'src/auth/utils';
-import { signInWithPassword } from 'src/auth/context/jwt';
+import { signIn } from 'src/auth/context/jwt';
 import { useAuthContext } from 'src/auth/hooks';
 
 // ----------------------------------------------------------------------
@@ -66,15 +66,19 @@ export function JwtSignInView() {
     setErrorMsg('');
 
     try {
-      const user = await signInWithPassword({
+      // one form for both roles: the action retries with the admin gate header
+      // when the backend rejects the credentials without it
+      const user = await signIn({
         email: data.email.trim().toLowerCase(),
         password: data.password,
       });
 
       await checkUserSession();
 
+      const role = user?.accountState?.userType === 'admin' ? 'admin' : 'user';
+
       // admins land in the panel, students on the study site
-      navigate(getLandingPath(user.role, searchParams.get('returnTo')), { replace: true });
+      navigate(getLandingPath(role, searchParams.get('returnTo')), { replace: true });
     } catch (error) {
       console.error(error);
       setErrorMsg(error instanceof Error ? error.message : String(error));
@@ -147,11 +151,6 @@ export function JwtSignInView() {
   return (
     <>
       {renderHead}
-
-      <Alert severity="info" sx={{ mb: 3 }}>
-        Demo accounts — admin <strong>admin@nous.com</strong> / <strong>admin1234</strong>, student{' '}
-        <strong>student@nous.com</strong> / <strong>student1234</strong>
-      </Alert>
 
       {!!errorMsg && (
         <Alert severity="error" sx={{ mb: 3 }}>

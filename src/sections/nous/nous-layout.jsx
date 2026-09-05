@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { paths } from 'src/routes/paths';
 
-import { useNousData } from 'src/context/nous-data';
+import { CONFIG } from 'src/config-global';
 
 import { signOut } from 'src/auth/context/jwt';
 import { useAuthContext } from 'src/auth/hooks';
@@ -24,7 +24,7 @@ import {
 // ----------------------------------------------------------------------
 
 export function NousLayout({ children }) {
-  const { settings } = useNousData();
+  const branding = CONFIG.branding;
 
   const { user, isAdmin, checkUserSession } = useAuthContext();
 
@@ -40,12 +40,12 @@ export function NousLayout({ children }) {
     <AppRoot>
       <AppHeader>
         <Logo href={paths.nous.root}>
-          {settings?.logoPrefix ?? 'NO'}
-          <span>{settings?.logoSuffix ?? 'US'}</span>
+          {branding.logoPrefix}
+          <span>{branding.logoSuffix}</span>
         </Logo>
 
         <HeaderActions>
-          <HeaderNote>{settings?.headerNote ?? 'CA & ACCA'}</HeaderNote>
+          <HeaderNote>{branding.headerNote}</HeaderNote>
 
           {isAdmin && <HeaderLink href={paths.admin.root}>Admin panel</HeaderLink>}
 
@@ -61,7 +61,7 @@ export function NousLayout({ children }) {
 
       <AppMain>{children}</AppMain>
 
-      <AppFooter>{settings?.footerText ?? 'NOUS © 2026'}</AppFooter>
+      <AppFooter>{branding.footerText}</AppFooter>
     </AppRoot>
   );
 }

@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import { Helmet } from 'react-helmet-async';
 
 import { CONFIG } from 'src/config-global';
-import { useNousData } from 'src/context/nous-data';
+import { contentCount } from 'src/constants/nous';
+import { handleApiError, useGetCoursesQuery } from 'src/store';
 
 import { LoadingScreen } from 'src/components/loading-screen';
 
@@ -10,7 +12,26 @@ import { NousHomeView } from 'src/sections/nous/view';
 // ----------------------------------------------------------------------
 
 export default function Page() {
-  const { loading } = useNousData();
+  const { data, isLoading, error, refetch } = useGetCoursesQuery({ limit: 100 });
+
+  const rows = data?.rows ?? [];
+
+  const totals = useMemo(
+    () =>
+      rows.reduce(
+        (sum, course) => ({
+          courses: sum.courses + 1,
+          levels: sum.levels + contentCount(course, 'activeLevels'),
+          subjects: sum.subjects + contentCount(course, 'activeSubjects'),
+        }),
+        { courses: 0, levels: 0, subjects: 0 }
+      ),
+    [rows]
+  );
+
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
 
   return (
     <>
@@ -18,7 +39,12 @@ export default function Page() {
         <title> {CONFIG.site.name}</title>
       </Helmet>
 
-      {loading ? <LoadingScreen /> : <NousHomeView />}
+      <NousHomeView
+        courses={rows}
+        totals={totals}
+        error={error && { message: handleApiError(error) }}
+        onRetry={refetch}
+      />
     </>
   );
 }

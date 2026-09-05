@@ -1,10 +1,15 @@
-import { useMemo } from 'react';
-
 import { paths } from 'src/routes/paths';
 
-import { activeOnly, chapterDocs } from 'src/utils/catalog';
+import { idOf } from 'src/constants/nous';
 
-import { PageTitle, BackButton, NoteUpload, Breadcrumbs, DocumentList } from '../components';
+import {
+  PageTitle,
+  BackButton,
+  NoteUpload,
+  Breadcrumbs,
+  ScreenError,
+  DocumentList,
+} from '../components';
 
 // ----------------------------------------------------------------------
 
@@ -16,52 +21,57 @@ const EMPTY_HINT = {
 };
 
 /**
- * Step 6: the PDFs behind one chapter section, filtered to course + level +
- * subject + chapter. Notes is the only section a student can add to.
+ * Step 6: the PDFs behind one chapter section.
+ *
+ * Each section is its own endpoint, narrowed to course + level + subject +
+ * chapter. Notes is the only one a student may add to.
  */
-export function NousSectionView({ course, level, subject, chapter, section }) {
-  const docs = useMemo(
-    () => activeOnly(chapterDocs(chapter, section.kind)),
-    [chapter, section.kind]
-  );
-
-  const path = {
-    courseId: course.id,
-    levelId: level.id,
-    subjectId: subject.id,
-    chapterId: chapter.id,
-  };
+export function NousSectionView({
+  course,
+  level,
+  subject,
+  chapter,
+  section,
+  docs,
+  error,
+  onRetry,
+}) {
+  const ids = [idOf(course), idOf(level), idOf(subject), idOf(chapter)];
 
   return (
     <>
-      <BackButton href={paths.nous.chapter(course.id, level.id, subject.id, chapter.id)} />
+      <BackButton href={paths.nous.chapter(...ids)} />
 
       <Breadcrumbs
         links={[
           { name: 'Home', href: paths.nous.root },
-          { name: course.name, href: paths.nous.course(course.id) },
-          { name: level.name, href: paths.nous.level(course.id, level.id) },
-          { name: subject.name, href: paths.nous.subject(course.id, level.id, subject.id) },
+          { name: course.name, href: paths.nous.course(idOf(course)) },
+          { name: level.name, href: paths.nous.level(idOf(course), idOf(level)) },
           {
-            name: chapter.name,
-            href: paths.nous.chapter(course.id, level.id, subject.id, chapter.id),
+            name: subject.name,
+            href: paths.nous.subject(idOf(course), idOf(level), idOf(subject)),
           },
+          { name: chapter.name, href: paths.nous.chapter(...ids) },
           { name: section.name },
         ]}
       />
 
       <PageTitle
         title={section.name}
-        subtitle={`${subject.name} · ${chapter.name} · ${docs.length} PDF${docs.length === 1 ? '' : 's'}`}
+        subtitle={`${subject.name} \u00b7 ${chapter.name} \u00b7 ${docs.length} PDF${docs.length === 1 ? '' : 's'}`}
       />
 
-      {section.kind === 'note' && <NoteUpload path={path} />}
+      {section.kind === 'note' && <NoteUpload chapterId={idOf(chapter)} />}
 
-      <DocumentList
-        docs={docs}
-        emptyTitle={`No ${section.name.toLowerCase()} yet`}
-        emptyHint={EMPTY_HINT[section.kind]}
-      />
+      {error ? (
+        <ScreenError error={error} onRetry={onRetry} />
+      ) : (
+        <DocumentList
+          docs={docs}
+          emptyTitle={`No ${section.name.toLowerCase()} yet`}
+          emptyHint={EMPTY_HINT[section.kind]}
+        />
+      )}
     </>
   );
 }

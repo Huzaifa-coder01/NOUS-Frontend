@@ -4,7 +4,8 @@ import { Navigate } from 'react-router-dom';
 import { paths } from 'src/routes/paths';
 
 import { CONFIG } from 'src/config-global';
-import { useNousRouteData } from 'src/hooks/use-nous-route-data';
+import { useCatalogChain } from 'src/hooks/use-catalog-chain';
+import { handleApiError, useGetPastPapersQuery } from 'src/store';
 
 import { LoadingScreen } from 'src/components/loading-screen';
 
@@ -13,7 +14,18 @@ import { NousSubjectPapersView } from 'src/sections/nous/view';
 // ----------------------------------------------------------------------
 
 export default function Page() {
-  const { loading, course, level, subject, notFound } = useNousRouteData();
+  const { ids, course, level, subject, loading, notFound } = useCatalogChain();
+
+  // no chapterId: the API returns every paper under this subject
+  const docs = useGetPastPapersQuery(
+    {
+      courseId: ids.courseId,
+      levelId: ids.levelId,
+      subjectId: ids.subjectId,
+      limit: 100,
+    },
+    { skip: !ids.subjectId }
+  );
 
   if (notFound) {
     return <Navigate to={paths.nous.root} replace />;
@@ -29,7 +41,14 @@ export default function Page() {
         <title> {`Past papers - ${subject.name} - ${CONFIG.site.name}`}</title>
       </Helmet>
 
-      <NousSubjectPapersView course={course} level={level} subject={subject} />
+      <NousSubjectPapersView
+        course={course}
+        level={level}
+        subject={subject}
+        docs={docs.data?.rows ?? []}
+        error={docs.error && { message: handleApiError(docs.error) }}
+        onRetry={docs.refetch}
+      />
     </>
   );
 }

@@ -1,43 +1,23 @@
 import { paths } from 'src/routes/paths';
 
-import { docsApi } from 'src/lib/mock-server';
-import { useNousData } from 'src/context/nous-data';
-import { DOC_LABELS, PAPER_TYPES, STATUS_OPTIONS, PAPER_SESSIONS } from 'src/_mock/_nous';
+import { idOf, DOC_LABELS } from 'src/constants/nous';
+import { useListQuery } from 'src/hooks/use-list-query';
+import { documentHooks, useUploadFileMutation } from 'src/store';
 
 import { EntityList } from '../components/entity-list';
-import { nameColumn, fileColumn, paperColumns, uploadedColumn } from '../components/doc-columns';
+import { nameColumn, fileColumn, uploadedColumn } from '../components/doc-columns';
 
 // ----------------------------------------------------------------------
-
-const currentYear = new Date().getFullYear();
 
 const NAME_FIELD = {
   name: 'name',
   label: 'PDF name',
   required: true,
-  helperText: 'Must be unique across the whole system',
+  helperText: 'Must be unique across every PDF in the system',
 };
 
-const PAPER_FIELDS = [
-  { name: 'year', label: 'Year', type: 'number', required: true },
-  {
-    name: 'session',
-    label: 'Session',
-    type: 'select',
-    options: PAPER_SESSIONS.map((value) => ({ value, label: value })),
-  },
-  {
-    name: 'type',
-    label: 'Paper type',
-    type: 'select',
-    options: PAPER_TYPES.map((value) => ({ value, label: value })),
-  },
-];
-
-const STATUS_FIELD = { name: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS };
-
-function fieldsFor(kind) {
-  return (isEdit) => [
+function fieldsFor(isEdit) {
+  return [
     NAME_FIELD,
     {
       name: 'file',
@@ -45,98 +25,88 @@ function fieldsFor(kind) {
       label: isEdit ? 'Replace PDF (optional)' : 'Choose PDF',
       helperText: isEdit ? 'Leave empty to keep the current file' : undefined,
     },
-    ...(kind === 'past-paper' ? PAPER_FIELDS : []),
-    ...(isEdit ? [] : [STATUS_FIELD]),
   ];
 }
 
 // ----------------------------------------------------------------------
 
 /**
- * One PDF list, used for every scope: subject past papers, and the syllabus /
- * notes / past papers of a chapter. `path` decides the filter, so a chapter
- * list only ever shows PDFs for that course + level + subject + chapter.
+ * One scoped PDF list: a subject's past papers, or the syllabus / notes / past
+ * papers of one chapter. `filters` narrows the endpoint, `parentIds` is what a
+ * create needs.
  *
- * Notes are the one kind an admin cannot create - students upload those - so
- * the create button is left off.
+ * Notes have no create button - students upload those, an admin only manages
+ * them afterwards.
  */
-export function AdminDocsView({ kind, path, heading, links, rows }) {
-  const { refresh } = useNousData();
+export function AdminDocsView({ kind, heading, links, filters, parentIds }) {
+  const hooks = documentHooks[kind];
 
-  const columns = [
-    nameColumn,
-    ...(kind === 'past-paper' ? paperColumns : []),
-    ...(kind === 'note' ? [uploadedColumn] : []),
-    fileColumn,
-  ];
+  const list = useListQuery(hooks.useList, filters);
 
-  const canCreate = kind !== 'note';
+  const [uploadFile] = useUploadFileMutation();
+  const [create] = hooks.useCreate();
+  const [update] = hooks.useUpdate();
+  const [remove] = hooks.useDelete();
+
+  /** Uploads the chosen file, if any; nothing chosen means keep the current one. */
+  const fileFields = async (values) => {
+    if (!values.file) return {};
+
+    const stored = await uploadFile(values.file).unwrap();
+
+    return { file: stored.file, fileUrl: stored.fileUrl };
+  };
+
+  const columns = [nameColumn, ...(kind === 'note' ? [uploadedColumn] : []), fileColumn];
 
   return (
     <EntityList
       heading={heading}
       links={links}
-      rows={rows ?? []}
+      list={list}
       columns={columns}
-      searchFields={['name', 'fileName', 'session', 'type']}
       searchPlaceholder={`Search ${DOC_LABELS[kind].plural.toLowerCase()}...`}
       createLabel={`New ${DOC_LABELS[kind].singular.toLowerCase()}`}
-      fields={fieldsFor(kind)}
       editLabel="Edit PDF"
+      fields={fieldsFor}
       describe={(row) => row.name}
-      deleteNote="The PDF file is removed as well - this cannot be undone."
-      emptyValues={{
-        name: '',
-        file: null,
-        status: STATUS_OPTIONS[0].value,
-        ...(kind === 'past-paper'
-          ? { year: currentYear, session: PAPER_SESSIONS[0], type: PAPER_TYPES[0] }
-          : {}),
-      }}
-      toValues={(row) => ({
-        name: row.name,
-        file: null,
-        ...(kind === 'past-paper' ? { year: row.year, session: row.session, type: row.type } : {}),
-      })}
+      deleteNote="Deleting marks the PDF deleted server side; students stop seeing it straight away."
+      emptyValues={{ name: '', file: null }}
+      toValues={(row) => ({ name: row.name, file: null })}
       onCreate={
-        canCreate
-          ? async (values) => {
-              await docsApi.create(kind, path, values);
-              await refresh();
-            }
-          : undefined
+        kind === 'note'
+          ? undefined
+          : async (values) =>
+              create({ ...parentIds, name: values.name, ...(await fileFields(values)) }).unwrap()
       }
-      onUpdate={async (row, values) => {
-        await docsApi.update(kind, path, row.id, values);
-        await refresh();
-      }}
-      onToggleStatus={async (row, status) => {
-        await docsApi.setStatus(kind, path, row.id, status);
-        await refresh();
-      }}
-      onDelete={async (row) => {
-        await docsApi.remove(kind, path, row.id);
-        await refresh();
-      }}
+      onUpdate={async (row, values) =>
+        update({ id: idOf(row), name: values.name, ...(await fileFields(values)) }).unwrap()
+      }
+      onToggleStatus={(row, status) => update({ id: idOf(row), status }).unwrap()}
+      onDelete={(row) => remove(idOf(row)).unwrap()}
     />
   );
 }
 
 // ----------------------------------------------------------------------
 
-/** Breadcrumb trail shared by the chapter level document screens. */
+/** Breadcrumb trail shared by the scoped document screens. */
 export function docLinks({ course, level, subject, chapter, current }) {
+  const courseId = idOf(course);
+  const levelId = idOf(level);
+  const subjectId = idOf(subject);
+
   return [
     { name: 'Admin', href: paths.admin.root },
     { name: 'Catalog', href: paths.admin.catalog.root },
-    { name: course.name, href: paths.admin.catalog.course(course.id) },
-    { name: level.name, href: paths.admin.catalog.level(course.id, level.id) },
-    { name: subject.name, href: paths.admin.catalog.subject(course.id, level.id, subject.id) },
+    { name: course.name, href: paths.admin.catalog.course(courseId) },
+    { name: level.name, href: paths.admin.catalog.level(courseId, levelId) },
+    { name: subject.name, href: paths.admin.catalog.subject(courseId, levelId, subjectId) },
     ...(chapter
       ? [
           {
             name: chapter.name,
-            href: paths.admin.catalog.chapter(course.id, level.id, subject.id, chapter.id),
+            href: paths.admin.catalog.chapter(courseId, levelId, subjectId, idOf(chapter)),
           },
         ]
       : []),

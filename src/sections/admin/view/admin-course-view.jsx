@@ -1,13 +1,19 @@
 import { useNavigate } from 'react-router-dom';
 
+import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
 import { paths } from 'src/routes/paths';
 
-import { catalogApi } from 'src/lib/mock-server';
-import { countActive } from 'src/utils/catalog';
-import { STATUS_OPTIONS } from 'src/_mock/_nous';
-import { useNousData } from 'src/context/nous-data';
+import { useListQuery } from 'src/hooks/use-list-query';
+import { useInvalidateCatalog } from 'src/hooks/use-invalidate-catalog';
+import { idOf, contentCount, LEVEL_EMOJIS } from 'src/constants/nous';
+import {
+  useGetLevelsQuery,
+  useCreateLevelMutation,
+  useUpdateLevelMutation,
+  useDeleteLevelMutation,
+} from 'src/store';
 
 import { Label } from 'src/components/label';
 
@@ -17,53 +23,56 @@ import { EntityList } from '../components/entity-list';
 
 const FIELDS = [
   { name: 'name', label: 'Level name', required: true },
-  { name: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS },
+  {
+    name: 'emoji',
+    label: 'Emoji',
+    type: 'select',
+    options: LEVEL_EMOJIS.map((emoji) => ({ value: emoji, label: emoji })),
+  },
 ];
-
-const fieldsFor = (isEdit) => (isEdit ? FIELDS.filter((field) => field.name !== 'status') : FIELDS);
 
 const COLUMNS = [
   {
     id: 'name',
     label: 'Level',
     render: (row) => (
-      <>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Box component="span" sx={{ fontSize: 20 }}>
+          {row.emoji}
+        </Box>
         <Typography variant="subtitle2">{row.name}</Typography>
-        <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-          /{row.id}
-        </Typography>
-      </>
+      </Box>
     ),
   },
   {
-    id: 'subjects',
-    label: 'Subjects',
-    width: 130,
+    id: 'contentCount',
+    label: 'Subjects · Chapters',
+    width: 190,
     render: (row) => (
       <Label color="info">
-        {countActive(row.subjects)}/{row.subjects.length}
+        {contentCount(row, 'activeSubjects')} · {contentCount(row, 'activeChapters')}
       </Label>
     ),
-  },
-  {
-    id: 'chapters',
-    label: 'Chapters',
-    width: 120,
-    render: (row) => row.subjects.reduce((total, subject) => total + subject.chapters.length, 0),
   },
 ];
 
 const DELETE_NOTE =
-  'Its subjects, chapters, past papers, syllabus and notes are kept in the database and switched to inactive.';
+  'A soft delete: the level is marked deleted and its subjects, chapters and PDFs are switched to inactive.';
 
 // ----------------------------------------------------------------------
 
 export function AdminCourseView({ course }) {
-  const { refresh } = useNousData();
-
   const navigate = useNavigate();
 
-  const path = { courseId: course.id };
+  const courseId = idOf(course);
+
+  const list = useListQuery(useGetLevelsQuery, { courseId });
+
+  const [createLevel] = useCreateLevelMutation();
+  const [updateLevel] = useUpdateLevelMutation();
+  const [deleteLevel] = useDeleteLevelMutation();
+
+  const invalidateCatalog = useInvalidateCatalog();
 
   return (
     <EntityList
@@ -73,37 +82,27 @@ export function AdminCourseView({ course }) {
         { name: 'Catalog', href: paths.admin.catalog.root },
         { name: course.name },
       ]}
-      rows={course.levels}
+      list={list}
       columns={COLUMNS}
       searchPlaceholder="Search level..."
       createLabel="New level"
-      fields={fieldsFor}
       editLabel="Edit level"
+      fields={FIELDS}
       cascades
       deleteNote={DELETE_NOTE}
-      emptyValues={{ name: '', status: STATUS_OPTIONS[0].value }}
-      toValues={(row) => ({ name: row.name })}
-      onCreate={async (values) => {
-        await catalogApi.create('level', path, values);
-        await refresh();
-      }}
-      onUpdate={async (row, values) => {
-        await catalogApi.update('level', { ...path, levelId: row.id }, values);
-        await refresh();
-      }}
+      emptyValues={{ name: '', emoji: LEVEL_EMOJIS[0] }}
+      toValues={(row) => ({ name: row.name, emoji: row.emoji })}
+      onCreate={(values) => createLevel({ ...values, courseId }).unwrap()}
+      onUpdate={(row, values) => updateLevel({ id: idOf(row), ...values }).unwrap()}
       onToggleStatus={async (row, status) => {
-        await catalogApi.setStatus('level', { ...path, levelId: row.id }, status);
-        await refresh();
+        await updateLevel({ id: idOf(row), status }).unwrap();
+        invalidateCatalog();
       }}
       onDelete={async (row) => {
-        await catalogApi.remove('level', { ...path, levelId: row.id });
-        await refresh();
+        await deleteLevel(idOf(row)).unwrap();
+        invalidateCatalog();
       }}
-      onMove={async (row, direction) => {
-        await catalogApi.move('level', { ...path, levelId: row.id }, direction);
-        await refresh();
-      }}
-      onOpen={(row) => navigate(paths.admin.catalog.level(course.id, row.id))}
+      onOpen={(row) => navigate(paths.admin.catalog.level(courseId, idOf(row)))}
       openLabel="Subjects"
     />
   );

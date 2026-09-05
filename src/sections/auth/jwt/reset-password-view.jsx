@@ -107,14 +107,24 @@ export function JwtResetPasswordView() {
           endAdornment: (
             <InputAdornment position="end">
               <IconButton onClick={confirmPassword.onToggle} edge="end">
-                <Iconify icon={confirmPassword.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'} />
+                <Iconify
+                  icon={confirmPassword.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'}
+                />
               </IconButton>
             </InputAdornment>
           ),
         }}
       />
 
-      <LoadingButton fullWidth color="primary" size="large" type="submit" variant="contained" loading={isSubmitting} loadingIndicator="Resetting...">
+      <LoadingButton
+        fullWidth
+        color="primary"
+        size="large"
+        type="submit"
+        variant="contained"
+        loading={isSubmitting}
+        loadingIndicator="Resetting..."
+      >
         Reset Password
       </LoadingButton>
     </Stack>

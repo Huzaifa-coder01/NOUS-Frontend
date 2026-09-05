@@ -28,7 +28,15 @@ const StyledElevation = styled('span')(({ theme }) => ({
 
 // ----------------------------------------------------------------------
 
-export function HeaderSection({ sx, slots, slotProps, disableOffset, disableElevation, layoutQuery = 'md', ...other }) {
+export function HeaderSection({
+  sx,
+  slots,
+  slotProps,
+  disableOffset,
+  disableElevation,
+  layoutQuery = 'md',
+  ...other
+}) {
   const theme = useTheme();
 
   const { offsetTop } = useScrollOffSetTop();
@@ -87,7 +95,9 @@ export function HeaderSection({ sx, slots, slotProps, disableOffset, disableElev
         >
           {slots?.leftArea}
 
-          <Box sx={{ display: 'flex', flex: '1 1 auto', justifyContent: 'center' }}>{slots?.centerArea}</Box>
+          <Box sx={{ display: 'flex', flex: '1 1 auto', justifyContent: 'center' }}>
+            {slots?.centerArea}
+          </Box>
 
           {slots?.rightArea}
         </Container>

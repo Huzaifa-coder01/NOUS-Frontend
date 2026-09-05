@@ -27,7 +27,11 @@ export function useToast() {
       onClose={() => setToast(null)}
       anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
     >
-      <Alert severity={toast?.severity ?? 'success'} variant="filled" onClose={() => setToast(null)}>
+      <Alert
+        severity={toast?.severity ?? 'success'}
+        variant="filled"
+        onClose={() => setToast(null)}
+      >
         {toast?.message ?? ''}
       </Alert>
     </Snackbar>

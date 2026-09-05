@@ -1,24 +1,19 @@
 import { Helmet } from 'react-helmet-async';
 
 import { CONFIG } from 'src/config-global';
-import { useNousData } from 'src/context/nous-data';
-
-import { LoadingScreen } from 'src/components/loading-screen';
 
 import { AdminCatalogView } from 'src/sections/admin/view';
 
 // ----------------------------------------------------------------------
 
 export default function Page() {
-  const { loading } = useNousData();
-
   return (
     <>
       <Helmet>
-        <title> {`Catalog - Admin - ${CONFIG.site.name}`}</title>
+        <title> {`Courses - Admin - ${CONFIG.site.name}`}</title>
       </Helmet>
 
-      {loading ? <LoadingScreen /> : <AdminCatalogView />}
+      <AdminCatalogView />
     </>
   );
 }

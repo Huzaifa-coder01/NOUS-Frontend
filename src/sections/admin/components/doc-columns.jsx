@@ -9,24 +9,34 @@ import { fDateTime } from 'src/utils/format-time';
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 
-import { openFile, downloadFile, formatFileSize } from 'src/lib/file-store';
+import { openFile, fileUrlOf, downloadFile, formatFileSize } from 'src/store';
 
 // ----------------------------------------------------------------------
 
 export function DocFileActions({ doc }) {
   const [busy, setBusy] = useState(false);
 
-  const run = (action) => async () => {
+  const missing = !fileUrlOf(doc);
+
+  const run = (action) => () => {
     setBusy(true);
 
     try {
-      await action(doc);
+      action(doc);
     } catch (error) {
       toast.error(error?.message ?? 'Could not open this PDF');
     } finally {
       setBusy(false);
     }
   };
+
+  if (missing) {
+    return (
+      <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+        No file
+      </Typography>
+    );
+  }
 
   return (
     <Stack direction="row" spacing={0.5}>
@@ -48,22 +58,26 @@ export function DocFileActions({ doc }) {
 
 // ----------------------------------------------------------------------
 
-/** Name + stored file name, shared by every document list. */
+/** Name plus whatever the API gave us about the stored file. */
 export const nameColumn = {
   id: 'name',
   label: 'PDF',
-  render: (row) => (
-    <>
-      <Typography variant="subtitle2">{row.name}</Typography>
-      <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-        {row.fileName} · {formatFileSize(row.fileSize)}
-      </Typography>
-    </>
-  ),
+  render: (row) => {
+    const size = formatFileSize(row.fileSize);
+
+    return (
+      <>
+        <Typography variant="subtitle2">{row.name}</Typography>
+        <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+          {[row.fileExtension?.toUpperCase(), size].filter(Boolean).join(' \u00b7 ') || row.file}
+        </Typography>
+      </>
+    );
+  },
 };
 
 export const fileColumn = {
-  id: 'fileName',
+  id: 'fileUrl',
   label: 'File',
   width: 170,
   render: (row) => <DocFileActions doc={row} />,
@@ -72,20 +86,14 @@ export const fileColumn = {
 export const uploadedColumn = {
   id: 'uploadedBy',
   label: 'Uploaded by',
-  width: 190,
+  width: 200,
   render: (row) => (
     <>
       <Typography variant="body2">{row.uploadedBy?.name ?? 'Unknown'}</Typography>
       <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-        {row.uploadedBy?.role === 'admin' ? 'Admin' : 'Student'}
-        {row.createdAt ? ` · ${fDateTime(row.createdAt)}` : ''}
+        {row.uploadedBy?.email ?? row.uploadedBy?.userType ?? 'Student'}
+        {row.createdAt ? ` \u00b7 ${fDateTime(row.createdAt)}` : ''}
       </Typography>
     </>
   ),
 };
-
-export const paperColumns = [
-  { id: 'session', label: 'Session', width: 110 },
-  { id: 'year', label: 'Year', width: 90 },
-  { id: 'type', label: 'Type', width: 170 },
-];

@@ -46,7 +46,12 @@ export function DashboardLayout({ sx, children, data }) {
 
   return (
     <>
-      <NavMobile data={navData} open={mobileNavOpen.value} onClose={mobileNavOpen.onFalse} cssVars={navColorVars.section} />
+      <NavMobile
+        data={navData}
+        open={mobileNavOpen.value}
+        onClose={mobileNavOpen.onFalse}
+        cssVars={navColorVars.section}
+      />
 
       <LayoutSection
         /** **************************************
@@ -70,7 +75,13 @@ export function DashboardLayout({ sx, children, data }) {
                   This is an info Alert.
                 </Alert>
               ),
-              bottomArea: isNavHorizontal ? <NavHorizontal data={navData} layoutQuery={layoutQuery} cssVars={navColorVars.section} /> : null,
+              bottomArea: isNavHorizontal ? (
+                <NavHorizontal
+                  data={navData}
+                  layoutQuery={layoutQuery}
+                  cssVars={navColorVars.section}
+                />
+              ) : null,
             }}
             slotProps={{
               toolbar: {
@@ -125,7 +136,12 @@ export function DashboardLayout({ sx, children, data }) {
               isNavMini={isNavMini}
               layoutQuery={layoutQuery}
               cssVars={navColorVars.section}
-              onToggleNav={() => settings.onUpdateField('navLayout', settings.navLayout === 'vertical' ? 'mini' : 'vertical')}
+              onToggleNav={() =>
+                settings.onUpdateField(
+                  'navLayout',
+                  settings.navLayout === 'vertical' ? 'mini' : 'vertical'
+                )
+              }
             />
           )
         }

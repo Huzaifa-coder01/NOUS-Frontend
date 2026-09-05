@@ -6,10 +6,10 @@ import Typography from '@mui/material/Typography';
 
 import { paths } from 'src/routes/paths';
 
-import { catalogApi } from 'src/lib/mock-server';
-import { useNousData } from 'src/context/nous-data';
-import { countActive, chapterDocs } from 'src/utils/catalog';
-import { STATUS_OPTIONS, CHAPTER_SECTIONS } from 'src/_mock/_nous';
+import { useListQuery } from 'src/hooks/use-list-query';
+import { useInvalidateCatalog } from 'src/hooks/use-invalidate-catalog';
+import { idOf, contentCount, CHAPTER_SECTIONS } from 'src/constants/nous';
+import { useGetChaptersQuery, useCreateChapterMutation, useUpdateChapterMutation, useDeleteChapterMutation } from 'src/store';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -19,58 +19,58 @@ import { EntityList } from '../components/entity-list';
 // ----------------------------------------------------------------------
 
 const FIELDS = [
-  { name: 'name', label: 'Chapter label', required: true, helperText: 'e.g. "Chapter 11"' },
-  { name: 'title', label: 'Chapter title', helperText: 'Shown in bold on the chapter list' },
-  { name: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS },
+  {
+    name: 'chapterNumber',
+    label: 'Chapter number',
+    type: 'number',
+    required: true,
+  },
+  { name: 'name', label: 'Chapter name', required: true },
 ];
 
-const fieldsFor = (isEdit) => (isEdit ? FIELDS.filter((field) => field.name !== 'status') : FIELDS);
-
-const DELETE_NOTE =
-  'Its past papers, syllabus and notes are kept in the database and switched to inactive.';
+const DELETE_NOTE = 'A soft delete: the chapter is marked deleted and its past papers, syllabus and notes are switched to inactive.';
 
 // ----------------------------------------------------------------------
 
 export function AdminSubjectView({ course, level, subject }) {
-  const { refresh } = useNousData();
-
   const navigate = useNavigate();
 
-  const path = { courseId: course.id, levelId: level.id, subjectId: subject.id };
+  const courseId = idOf(course);
+  const levelId = idOf(level);
+  const subjectId = idOf(subject);
+
+  const list = useListQuery(useGetChaptersQuery, { subjectId });
+
+  const [createChapter] = useCreateChapterMutation();
+  const [updateChapter] = useUpdateChapterMutation();
+  const [deleteChapter] = useDeleteChapterMutation();
+
+  const invalidateCatalog = useInvalidateCatalog();
 
   const columns = [
     {
-      id: 'name',
-      label: 'Chapter',
-      width: 160,
+      id: 'chapterNumber',
+      label: 'No.',
+      width: 80,
       render: (row) => (
-        <>
-          <Typography variant="subtitle2" sx={{ color: 'primary.main' }}>
-            {row.name}
-          </Typography>
-          <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-            /{row.id}
-          </Typography>
-        </>
+        <Typography variant="subtitle2" sx={{ color: 'primary.main' }}>
+          {row.chapterNumber}
+        </Typography>
       ),
     },
-    { id: 'title', label: 'Title' },
+    { id: 'name', label: 'Chapter' },
     {
-      id: 'documents',
+      id: 'contentCount',
       label: 'Syllabus · Notes · Papers',
       width: 220,
       render: (row) => (
         <Stack direction="row" spacing={0.75}>
           {CHAPTER_SECTIONS.map((section) => {
-            const docs = chapterDocs(row, section.kind);
+            const count = contentCount(row, section.count);
 
             return (
-              <Label
-                key={section.id}
-                color={countActive(docs) ? 'success' : 'default'}
-                title={section.name}
-              >
-                {section.icon} {countActive(docs)}/{docs.length}
+              <Label key={section.id} title={section.name} color={count ? 'success' : 'default'}>
+                {section.icon} {count}
               </Label>
             );
           })}
@@ -85,49 +85,38 @@ export function AdminSubjectView({ course, level, subject }) {
       links={[
         { name: 'Admin', href: paths.admin.root },
         { name: 'Catalog', href: paths.admin.catalog.root },
-        { name: course.name, href: paths.admin.catalog.course(course.id) },
-        { name: level.name, href: paths.admin.catalog.level(course.id, level.id) },
+        { name: course.name, href: paths.admin.catalog.course(courseId) },
+        { name: level.name, href: paths.admin.catalog.level(courseId, levelId) },
         { name: subject.name },
       ]}
-      rows={subject.chapters}
+      list={list}
       columns={columns}
-      searchFields={['name', 'title']}
       searchPlaceholder="Search chapter..."
       createLabel="New chapter"
-      fields={fieldsFor}
       editLabel="Edit chapter"
+      fields={FIELDS}
       cascades
       deleteNote={DELETE_NOTE}
-      emptyValues={{
-        name: `Chapter ${subject.chapters.length + 1}`,
-        title: `${subject.name} - Chapter ${subject.chapters.length + 1}`,
-        status: STATUS_OPTIONS[0].value,
-      }}
-      toValues={(row) => ({ name: row.name, title: row.title })}
-      describe={(row) => row.title ?? row.name}
-      onCreate={async (values) => {
-        await catalogApi.create('chapter', path, values);
-        await refresh();
-      }}
-      onUpdate={async (row, values) => {
-        await catalogApi.update('chapter', { ...path, chapterId: row.id }, values);
-        await refresh();
-      }}
+      emptyValues={{ chapterNumber: (list.total ?? 0) + 1, name: '' }}
+      toValues={(row) => ({ chapterNumber: row.chapterNumber, name: row.name })}
+      describe={(row) => `Chapter ${row.chapterNumber} - ${row.name}`}
+      onCreate={(values) => createChapter({ ...values, subjectId }).unwrap()}
+      onUpdate={(row, values) =>
+        updateChapter({
+          id: idOf(row),
+          name: values.name,
+          chapterNumber: Number(values.chapterNumber),
+        }).unwrap()
+      }
       onToggleStatus={async (row, status) => {
-        await catalogApi.setStatus('chapter', { ...path, chapterId: row.id }, status);
-        await refresh();
+        await updateChapter({ id: idOf(row), status }).unwrap();
+        invalidateCatalog();
       }}
       onDelete={async (row) => {
-        await catalogApi.remove('chapter', { ...path, chapterId: row.id });
-        await refresh();
+        await deleteChapter(idOf(row)).unwrap();
+        invalidateCatalog();
       }}
-      onMove={async (row, direction) => {
-        await catalogApi.move('chapter', { ...path, chapterId: row.id }, direction);
-        await refresh();
-      }}
-      onOpen={(row) =>
-        navigate(paths.admin.catalog.chapter(course.id, level.id, subject.id, row.id))
-      }
+      onOpen={(row) => navigate(paths.admin.catalog.chapter(courseId, levelId, subjectId, idOf(row)))}
       openLabel="Content"
       extraActions={
         <Button
@@ -135,9 +124,7 @@ export function AdminSubjectView({ course, level, subject }) {
           variant="outlined"
           sx={{ flexShrink: 0 }}
           startIcon={<Iconify icon="solar:documents-bold" />}
-          onClick={() =>
-            navigate(paths.admin.catalog.subjectPastPapers(course.id, level.id, subject.id))
-          }
+          onClick={() => navigate(paths.admin.catalog.subjectPastPapers(courseId, levelId, subjectId))}
         >
           Subject past papers
         </Button>

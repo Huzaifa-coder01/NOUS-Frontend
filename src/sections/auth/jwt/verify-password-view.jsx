@@ -33,7 +33,7 @@ export function JwtVerifyPasswordView() {
 
   const [errorMsg, setErrorMsg] = useState('');
 
-  // there is no mailer in the mock backend, so the code is shown here instead
+  // on localhost the backend returns the OTP in the response body
   const pending = getPendingReset();
 
   const methods = useForm({
@@ -108,9 +108,9 @@ export function JwtVerifyPasswordView() {
     <>
       {renderHead}
 
-      {!!pending?.code && (
+      {!!pending?.otp && (
         <Alert severity="info" sx={{ mb: 3 }}>
-          Mock backend — your code is <strong>{pending.code}</strong>
+          Dev build — your code is <strong>{pending.otp}</strong>
         </Alert>
       )}
 

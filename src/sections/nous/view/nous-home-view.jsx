@@ -1,75 +1,55 @@
-import { useMemo } from 'react';
-
 import { paths } from 'src/routes/paths';
 
+import { CONFIG } from 'src/config-global';
 import { nousAccent } from 'src/theme/palette';
-import { courseTotals } from 'src/utils/catalog';
-import { useNousData } from 'src/context/nous-data';
+import { idOf, contentCount } from 'src/constants/nous';
 
 import { useAuthContext } from 'src/auth/hooks';
 
-import { Hero, NousCard } from '../components';
+import { Hero, NousCard, ScreenError } from '../components';
 import { CardsGrid, EmptyState } from '../styles';
 
 // ----------------------------------------------------------------------
 
-/** Step 1 of the student flow: every active course. */
-export function NousHomeView() {
-  const { activeCourses, settings } = useNousData();
-
+/**
+ * Step 1 of the student flow: every course from `GET /courses`.
+ *
+ * The API forces `status=active` for a student, so nothing is filtered here -
+ * whatever comes back is what a student is allowed to see.
+ */
+export function NousHomeView({ courses, totals, error, onRetry }) {
   const { user } = useAuthContext();
-
-  const totals = useMemo(
-    () =>
-      activeCourses.reduce(
-        (sum, course) => {
-          const course_ = courseTotals(course);
-
-          return {
-            levels: sum.levels + course_.levels,
-            subjects: sum.subjects + course_.subjects,
-            chapters: sum.chapters + course_.chapters,
-          };
-        },
-        { levels: 0, subjects: 0, chapters: 0 }
-      ),
-    [activeCourses]
-  );
 
   const firstName = user?.name?.split(' ')[0];
 
   return (
     <>
       <Hero
-        title={
-          firstName ? `Welcome back, ${firstName}` : settings?.homeTitle ?? 'Welcome to NOUS'
-        }
-        subtitle={settings?.homeSubtitle ?? 'Your organized learning platform for CA & ACCA'}
+        title={firstName ? `Welcome back, ${firstName}` : CONFIG.branding.homeTitle}
+        subtitle={CONFIG.branding.homeSubtitle}
         stats={[
-          `${activeCourses.length} courses`,
+          `${totals.courses} courses`,
+          `${totals.levels} levels`,
           `${totals.subjects} subjects`,
-          `${totals.chapters} chapters`,
         ]}
       />
 
-      {activeCourses.length ? (
+      {error ? (
+        <ScreenError error={error} onRetry={onRetry} />
+      ) : courses.length ? (
         <CardsGrid>
-          {activeCourses.map((course, index) => {
-            const { levels, subjects } = courseTotals(course);
-
-            return (
-              <NousCard
-                key={course.id}
-                href={paths.nous.course(course.id)}
-                icon={course.icon}
-                title={course.name}
-                description={course.description}
-                meta={`${levels} levels · ${subjects} subjects`}
-                accent={nousAccent(index)}
-                action="Explore"
-              />
-            );
-          })}
+          {courses.map((course, index) => (
+            <NousCard
+              key={idOf(course)}
+              href={paths.nous.course(idOf(course))}
+              icon={course.emoji}
+              title={course.name}
+              description={course.description}
+              meta={`${contentCount(course, 'activeLevels')} levels · ${contentCount(course, 'activeSubjects')} subjects`}
+              accent={nousAccent(index)}
+              action="Explore"
+            />
+          ))}
         </CardsGrid>
       ) : (
         <EmptyState>

@@ -16,6 +16,7 @@ const ICONS = {
   file: icon('ic-file'),
   page: icon('ic-blank'),
   user: icon('ic-user'),
+  profile: icon('ic-user'),
   parameter: icon('ic-parameter'),
   external: icon('ic-external'),
 };
@@ -55,8 +56,7 @@ export const navData = [
     subheader: 'Account',
     items: [
       { title: 'Users', path: paths.admin.users, icon: ICONS.user },
-      { title: 'Profile', path: paths.admin.profile, icon: ICONS.user },
-      { title: 'Settings', path: paths.admin.settings, icon: ICONS.parameter },
+      { title: 'Profile', path: paths.admin.profile, icon: ICONS.profile },
       { title: 'View site', path: paths.nous.root, icon: ICONS.external },
     ],
   },

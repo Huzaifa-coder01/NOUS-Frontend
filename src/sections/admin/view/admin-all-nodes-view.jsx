@@ -1,16 +1,15 @@
-import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
 import { paths } from 'src/routes/paths';
 
-import { catalogApi } from 'src/lib/mock-server';
-import { useNousData } from 'src/context/nous-data';
-import { countActive, flattenTree, chapterDocs } from 'src/utils/catalog';
-
-import { CHAPTER_SECTIONS } from 'src/_mock/_nous';
+import { nodeHooks } from 'src/store';
+import { useListQuery } from 'src/hooks/use-list-query';
+import { useInvalidateCatalog } from 'src/hooks/use-invalidate-catalog';
+import { idOf, contentCount, CHAPTER_SECTIONS } from 'src/constants/nous';
 
 import { Label } from 'src/components/label';
 
@@ -18,37 +17,63 @@ import { EntityList } from '../components/entity-list';
 
 // ----------------------------------------------------------------------
 
-/** Where the node sits in the catalog - the reason these modules exist. */
-function locationColumn(label, render) {
-  return { id: 'courseName', label, render };
+/** A parent relation comes back populated on these list rows. */
+function relation(value) {
+  return value && typeof value === 'object' ? value : null;
 }
 
-const nameColumn = (label) => ({
+/** Walks whatever part of the chain a row carries. */
+function chainOf(row) {
+  const subject = relation(row.subject ?? row.subjectId);
+  const level = relation(row.level ?? row.levelId) ?? relation(subject?.level ?? subject?.levelId);
+  const course = relation(row.course ?? row.courseId) ?? relation(level?.course ?? level?.courseId);
+
+  return { course, level, subject };
+}
+
+const emojiName = (label) => ({
   id: 'name',
   label,
   render: (row) => (
-    <>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+      {!!row.emoji && (
+        <Box component="span" sx={{ fontSize: 20 }}>
+          {row.emoji}
+        </Box>
+      )}
       <Typography variant="subtitle2">{row.name}</Typography>
-      <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-        /{row.id}
-      </Typography>
-    </>
+    </Box>
   ),
 });
 
-const ratio = (label, width, pick) => ({
-  id: label.toLowerCase(),
+function locationColumn(label, lines) {
+  return {
+    id: 'location',
+    label,
+    render: (row) => {
+      const [primary, secondary] = lines(chainOf(row));
+
+      return (
+        <>
+          <Typography variant="body2">{primary || '—'}</Typography>
+          {!!secondary && (
+            <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+              {secondary}
+            </Typography>
+          )}
+        </>
+      );
+    },
+  };
+}
+
+const countsColumn = (label, width, fields) => ({
+  id: 'contentCount',
   label,
   width,
-  render: (row) => {
-    const list = pick(row);
-
-    return (
-      <Label color={countActive(list) ? 'success' : 'default'}>
-        {countActive(list)}/{list.length}
-      </Label>
-    );
-  },
+  render: (row) => (
+    <Label color="info">{fields.map((field) => contentCount(row, field)).join(' · ')}</Label>
+  ),
 });
 
 // ----------------------------------------------------------------------
@@ -57,28 +82,22 @@ const CONFIG = {
   level: {
     heading: 'Levels',
     editLabel: 'Edit level',
-    subheading:
-      'Every level in the system, whichever course it belongs to. Add new levels from the course they sit under.',
+    searchPlaceholder: 'Search levels...',
     fields: [{ name: 'name', label: 'Level name', required: true }],
-    searchFields: ['name', 'courseName'],
-    searchPlaceholder: 'Search levels or courses...',
     columns: [
-      nameColumn('Level'),
-      locationColumn('Course', (row) => <Typography variant="body2">{row.courseName}</Typography>),
-      ratio('Subjects', 130, (row) => row.subjects ?? []),
-      {
-        id: 'chapters',
-        label: 'Chapters',
-        width: 110,
-        render: (row) =>
-          (row.subjects ?? []).reduce((total, subject) => total + subject.chapters.length, 0),
-      },
+      emojiName('Level'),
+      locationColumn('Course', ({ course }) => [course?.name]),
+      countsColumn('Subjects · Chapters', 190, ['activeSubjects', 'activeChapters']),
     ],
     toValues: (row) => ({ name: row.name }),
-    open: (row) => paths.admin.catalog.level(row.path.courseId, row.path.levelId),
+    open: (row) => {
+      const { course } = chainOf(row);
+
+      return course ? paths.admin.catalog.level(idOf(course), idOf(row)) : null;
+    },
     openLabel: 'Subjects',
     deleteNote:
-      'Its subjects, chapters, past papers, syllabus and notes are kept in the database and switched to inactive.',
+      'A soft delete: the level is marked deleted and its subjects, chapters and PDFs are switched to inactive.',
   },
 
   subject: {
@@ -86,28 +105,24 @@ const CONFIG = {
     editLabel: 'Edit subject',
     subheading:
       'Every subject in the system, whichever course and level it belongs to. Add new subjects from the level they sit under.',
+    searchPlaceholder: 'Search subjects...',
     fields: [{ name: 'name', label: 'Subject name', required: true }],
-    searchFields: ['name', 'courseName', 'levelName'],
-    searchPlaceholder: 'Search subjects, courses or levels...',
     columns: [
-      nameColumn('Subject'),
-      locationColumn('Course / level', (row) => (
-        <>
-          <Typography variant="body2">{row.courseName}</Typography>
-          <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-            {row.levelName}
-          </Typography>
-        </>
-      )),
-      ratio('Chapters', 130, (row) => row.chapters ?? []),
-      ratio('Papers', 120, (row) => row.pastPapers ?? []),
+      emojiName('Subject'),
+      locationColumn('Course / level', ({ course, level }) => [course?.name, level?.name]),
+      countsColumn('Chapters · Papers', 190, ['activeChapters', 'activePastPapers']),
     ],
     toValues: (row) => ({ name: row.name }),
-    open: (row) =>
-      paths.admin.catalog.subject(row.path.courseId, row.path.levelId, row.path.subjectId),
+    open: (row) => {
+      const { course, level } = chainOf(row);
+
+      return course && level
+        ? paths.admin.catalog.subject(idOf(course), idOf(level), idOf(row))
+        : null;
+    },
     openLabel: 'Chapters',
     deleteNote:
-      'Its chapters, past papers, syllabus and notes are kept in the database and switched to inactive.',
+      'A soft delete: the subject is marked deleted and its chapters and PDFs are switched to inactive.',
   },
 
   chapter: {
@@ -115,53 +130,42 @@ const CONFIG = {
     editLabel: 'Edit chapter',
     subheading:
       'Every chapter in the system, whichever subject it belongs to. Add new chapters from the subject they sit under.',
+    searchPlaceholder: 'Search chapters...',
     fields: [
-      { name: 'name', label: 'Chapter label', required: true, helperText: 'e.g. "Chapter 11"' },
-      { name: 'title', label: 'Chapter title' },
+      { name: 'chapterNumber', label: 'Chapter number', type: 'number', required: true },
+      { name: 'name', label: 'Chapter name', required: true },
     ],
-    searchFields: ['name', 'title', 'courseName', 'levelName', 'subjectName'],
-    searchPlaceholder: 'Search chapters, subjects, levels or courses...',
     columns: [
       {
-        id: 'name',
+        id: 'chapterNumber',
         label: 'Chapter',
         render: (row) => (
           <>
             <Typography variant="subtitle2" sx={{ color: 'primary.main' }}>
-              {row.name}
+              Chapter {row.chapterNumber}
             </Typography>
             <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-              {row.title || `/${row.id}`}
+              {row.name}
             </Typography>
           </>
         ),
       },
-      locationColumn('Course / level / subject', (row) => (
-        <>
-          <Typography variant="body2">
-            {row.courseName} · {row.levelName}
-          </Typography>
-          <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-            {row.subjectName}
-          </Typography>
-        </>
-      )),
+      locationColumn('Course / level / subject', ({ course, level, subject }) => [
+        [course?.name, level?.name].filter(Boolean).join(' · '),
+        subject?.name,
+      ]),
       {
-        id: 'documents',
+        id: 'contentCount',
         label: 'Syllabus · Notes · Papers',
-        width: 230,
+        width: 220,
         render: (row) => (
           <Stack direction="row" spacing={0.75}>
             {CHAPTER_SECTIONS.map((section) => {
-              const docs = chapterDocs(row, section.kind);
+              const count = contentCount(row, section.count);
 
               return (
-                <Label
-                  key={section.id}
-                  title={section.name}
-                  color={countActive(docs) ? 'success' : 'default'}
-                >
-                  {section.icon} {countActive(docs)}/{docs.length}
+                <Label key={section.id} title={section.name} color={count ? 'success' : 'default'}>
+                  {section.icon} {count}
                 </Label>
               );
             })}
@@ -169,72 +173,79 @@ const CONFIG = {
         ),
       },
     ],
-    toValues: (row) => ({ name: row.name, title: row.title }),
-    describe: (row) => `${row.subjectName} - ${row.name}`,
-    open: (row) =>
-      paths.admin.catalog.chapter(
-        row.path.courseId,
-        row.path.levelId,
-        row.path.subjectId,
-        row.path.chapterId
-      ),
+    toValues: (row) => ({ chapterNumber: row.chapterNumber, name: row.name }),
+    describe: (row) => `Chapter ${row.chapterNumber} - ${row.name}`,
+    open: (row) => {
+      const { course, level, subject } = chainOf(row);
+
+      return course && level && subject
+        ? paths.admin.catalog.chapter(idOf(course), idOf(level), idOf(subject), idOf(row))
+        : null;
+    },
     openLabel: 'Content',
     deleteNote:
-      'Its past papers, syllabus and notes are kept in the database and switched to inactive.',
+      'A soft delete: the chapter is marked deleted and its past papers, syllabus and notes are switched to inactive.',
   },
 };
 
 // ----------------------------------------------------------------------
 
 /**
- * One node type, listed across the whole catalog with the course / level /
- * subject it belongs to.
+ * One node type listed across the whole catalog, with the course / level /
+ * subject it belongs to. The list endpoints already page, search and filter by
+ * status server side, and their rows carry the parent chain, so these screens
+ * are the same call the scoped screens make minus the parent filter.
  *
- * Creating is deliberately left out: a new level, subject or chapter needs a
- * parent to sit under, so it is added from that parent's page. Everything else
- * - rename, activate, deactivate, delete - works from here.
+ * Creating is deliberately absent: a new level, subject or chapter needs a
+ * parent, so it is added from that parent's page.
  */
 export function AdminAllNodesView({ type }) {
-  const { adminCourses, refresh } = useNousData();
-
   const navigate = useNavigate();
 
   const config = CONFIG[type];
 
-  const tree = useMemo(() => flattenTree(adminCourses), [adminCourses]);
+  const hooks = nodeHooks[type];
 
-  const rows = tree[`${type}s`];
+  const list = useListQuery(hooks.useList);
+
+  const [update] = hooks.useUpdate();
+  const [remove] = hooks.useDelete();
+
+  const invalidateCatalog = useInvalidateCatalog();
 
   return (
     <EntityList
       heading={config.heading}
       links={[{ name: 'Admin', href: paths.admin.root }, { name: config.heading }]}
-      rows={rows}
+      list={list}
       columns={config.columns}
-      searchFields={config.searchFields}
       searchPlaceholder={config.searchPlaceholder}
       fields={config.fields}
       editLabel={config.editLabel}
       cascades
       deleteNote={config.deleteNote}
       describe={config.describe}
-      // a node can be active yet unreachable because a parent is off, so the
-      // status tabs filter on what a student would actually get
-      statusOf={(row) => row.effectiveStatus}
       toValues={config.toValues}
-      onUpdate={async (row, values) => {
-        await catalogApi.update(type, row.path, values);
-        await refresh();
-      }}
+      onUpdate={(row, values) =>
+        update({
+          id: idOf(row),
+          ...values,
+          ...(values.chapterNumber ? { chapterNumber: Number(values.chapterNumber) } : {}),
+        }).unwrap()
+      }
       onToggleStatus={async (row, status) => {
-        await catalogApi.setStatus(type, row.path, status);
-        await refresh();
+        await update({ id: idOf(row), status }).unwrap();
+        invalidateCatalog();
       }}
       onDelete={async (row) => {
-        await catalogApi.remove(type, row.path);
-        await refresh();
+        await remove(idOf(row)).unwrap();
+        invalidateCatalog();
       }}
-      onOpen={(row) => navigate(config.open(row))}
+      onOpen={(row) => {
+        const href = config.open(row);
+
+        if (href) navigate(href);
+      }}
       openLabel={config.openLabel}
       toolbar={
         <Typography sx={{ px: 2.5, pb: 2.5, fontSize: 14, color: 'text.secondary' }}>

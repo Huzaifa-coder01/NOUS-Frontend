@@ -11,6 +11,7 @@ import { GuestGuard } from 'src/auth/guard';
 
 const SignInPage = lazy(() => import('src/pages/auth/sign-in'));
 const SignUpPage = lazy(() => import('src/pages/auth/sign-up'));
+const VerifyEmailPage = lazy(() => import('src/pages/auth/verify-email'));
 const ForgetPasswordPage = lazy(() => import('src/pages/auth/forget-password'));
 const VerifyPasswordPage = lazy(() => import('src/pages/auth/verify-password'));
 const ResetPasswordPage = lazy(() => import('src/pages/auth/reset-password'));
@@ -45,6 +46,17 @@ export const authRoutes = [
           description:
             'Create an account to open the syllabus, notes and past papers for any chapter in CA or ACCA.',
           note: 'No card required.',
+        }),
+      },
+      {
+        path: 'verify-email',
+        element: withLayout(<VerifyEmailPage />, {
+          eyebrow: 'One last step',
+          title: 'Check your inbox.',
+          subtitle: 'Confirm your email address',
+          description:
+            'Your account stays pending until the code is verified. Verifying signs you straight in.',
+          note: 'The code expires in 10 minutes.',
         }),
       },
       {

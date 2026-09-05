@@ -46,7 +46,8 @@ export function AccountDrawer({ data = [], sx, ...other }) {
     setOpen(false);
   }, []);
 
-  const handleClickItem = useCallback((path) => {
+  const handleClickItem = useCallback(
+    (path) => {
       handleCloseDrawer();
       router.push(path);
     },
@@ -71,10 +72,26 @@ export function AccountDrawer({ data = [], sx, ...other }) {
 
   return (
     <>
-      <AccountButton open={open} onClick={handleOpenDrawer} photoURL={undefined} displayName={user?.name} sx={sx} {...other} />
+      <AccountButton
+        open={open}
+        onClick={handleOpenDrawer}
+        photoURL={undefined}
+        displayName={user?.name}
+        sx={sx}
+        {...other}
+      />
 
-      <Drawer open={open} onClose={handleCloseDrawer} anchor="right" slotProps={{ backdrop: { invisible: true } }} PaperProps={{ sx: { width: 320 } }}>
-        <IconButton onClick={handleCloseDrawer} sx={{ top: 12, left: 12, zIndex: 9, position: 'absolute' }}>
+      <Drawer
+        open={open}
+        onClose={handleCloseDrawer}
+        anchor="right"
+        slotProps={{ backdrop: { invisible: true } }}
+        PaperProps={{ sx: { width: 320 } }}
+      >
+        <IconButton
+          onClick={handleCloseDrawer}
+          sx={{ top: 12, left: 12, zIndex: 9, position: 'absolute' }}
+        >
           <Iconify icon="mingcute:close-line" />
         </IconButton>
 
@@ -197,7 +214,7 @@ export function AccountDrawer({ data = [], sx, ...other }) {
             })}
           </Stack> */}
 
-            <Stack
+          <Stack
             sx={{
               py: 3,
               px: 2.5,
@@ -209,7 +226,7 @@ export function AccountDrawer({ data = [], sx, ...other }) {
               return (
                 <MenuItem
                   key={option.label}
-                  onClick={handleClickItem}
+                  onClick={() => handleClickItem(paths.admin.profile)}
                   sx={{
                     py: 1,
                     color: 'text.secondary',

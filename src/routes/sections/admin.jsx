@@ -12,7 +12,7 @@ import { RoleGuard } from 'src/auth/guard';
 const AnalyticsPage = lazy(() => import('src/pages/admin/analytics'));
 const UsersPage = lazy(() => import('src/pages/admin/users'));
 const ProfilePage = lazy(() => import('src/pages/admin/profile'));
-const SettingsPage = lazy(() => import('src/pages/admin/settings'));
+// const SettingsPage = lazy(() => import('src/pages/admin/settings'));
 const CatalogPage = lazy(() => import('src/pages/admin/catalog'));
 const CatalogCoursePage = lazy(() => import('src/pages/admin/catalog-course'));
 const CatalogLevelPage = lazy(() => import('src/pages/admin/catalog-level'));
@@ -52,7 +52,7 @@ export const adminRoutes = [
       { path: 'syllabus', element: <SyllabusPage /> },
       { path: 'notes', element: <NotesPage /> },
       { path: 'profile', element: <ProfilePage /> },
-      { path: 'settings', element: <SettingsPage /> },
+      // { path: 'settings', element: <SettingsPage /> },
       {
         path: 'catalog',
         children: [

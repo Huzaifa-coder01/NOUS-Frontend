@@ -4,7 +4,7 @@ import { Navigate } from 'react-router-dom';
 import { paths } from 'src/routes/paths';
 
 import { CONFIG } from 'src/config-global';
-import { useNousRouteData } from 'src/hooks/use-nous-route-data';
+import { useCatalogChain } from 'src/hooks/use-catalog-chain';
 
 import { LoadingScreen } from 'src/components/loading-screen';
 
@@ -13,7 +13,7 @@ import { AdminCourseView } from 'src/sections/admin/view';
 // ----------------------------------------------------------------------
 
 export default function Page() {
-  const { loading, course, notFound } = useNousRouteData({ scope: 'admin' });
+  const { course, loading, notFound } = useCatalogChain();
 
   if (notFound) {
     return <Navigate to={paths.admin.catalog.root} replace />;

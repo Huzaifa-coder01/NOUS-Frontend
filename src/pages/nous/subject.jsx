@@ -4,7 +4,8 @@ import { Navigate } from 'react-router-dom';
 import { paths } from 'src/routes/paths';
 
 import { CONFIG } from 'src/config-global';
-import { useNousRouteData } from 'src/hooks/use-nous-route-data';
+import { useCatalogChain } from 'src/hooks/use-catalog-chain';
+import { handleApiError, useGetChaptersQuery } from 'src/store';
 
 import { LoadingScreen } from 'src/components/loading-screen';
 
@@ -13,7 +14,12 @@ import { NousSubjectView } from 'src/sections/nous/view';
 // ----------------------------------------------------------------------
 
 export default function Page() {
-  const { loading, course, level, subject, notFound } = useNousRouteData();
+  const { ids, course, level, subject, loading, notFound } = useCatalogChain();
+
+  const chapters = useGetChaptersQuery(
+    { subjectId: ids.subjectId, limit: 200 },
+    { skip: !ids.subjectId }
+  );
 
   if (notFound) {
     return <Navigate to={paths.nous.root} replace />;
@@ -29,7 +35,14 @@ export default function Page() {
         <title> {`${subject.name} - ${CONFIG.site.name}`}</title>
       </Helmet>
 
-      <NousSubjectView course={course} level={level} subject={subject} />
+      <NousSubjectView
+        course={course}
+        level={level}
+        subject={subject}
+        chapters={chapters.data?.rows ?? []}
+        error={chapters.error && { message: handleApiError(chapters.error) }}
+        onRetry={chapters.refetch}
+      />
     </>
   );
 }

@@ -14,4 +14,6 @@ export * from './note-upload';
 
 export * from './chapter-card';
 
+export * from './screen-error';
+
 export * from './section-card';

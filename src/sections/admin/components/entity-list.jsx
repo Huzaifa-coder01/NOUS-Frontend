@@ -1,12 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
-import Chip from '@mui/material/Chip';
 import Card from '@mui/material/Card';
 import Tabs from '@mui/material/Tabs';
 import Table from '@mui/material/Table';
 import Stack from '@mui/material/Stack';
+import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
 import TableRow from '@mui/material/TableRow';
@@ -15,12 +15,12 @@ import Checkbox from '@mui/material/Checkbox';
 import TableCell from '@mui/material/TableCell';
 import TextField from '@mui/material/TextField';
 import IconButton from '@mui/material/IconButton';
+import LinearProgress from '@mui/material/LinearProgress';
 import InputAdornment from '@mui/material/InputAdornment';
 
 import { useBoolean } from 'src/hooks/use-boolean';
-import { useSetState } from 'src/hooks/use-set-state';
 
-import { STATUS } from 'src/_mock/_nous';
+import { idOf, STATUS, STATUS_FILTERS } from 'src/constants/nous';
 import { DashboardContent } from 'src/layouts/dashboard';
 
 import { toast } from 'src/components/snackbar';
@@ -29,14 +29,8 @@ import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
-import { chipProps, FiltersBlock, FiltersResult } from 'src/components/filters-result';
 import {
-  useTable,
-  emptyRows,
-  rowInPage,
   TableNoData,
-  getComparator,
-  TableEmptyRows,
   TableHeadCustom,
   TableSelectedAction,
   TablePaginationCustom,
@@ -47,27 +41,21 @@ import { StatusSwitch } from './status-switch';
 
 // ----------------------------------------------------------------------
 
-const STATUS_TABS = [
-  { value: 'all', label: 'All' },
-  { value: STATUS.active, label: 'Active' },
-  { value: STATUS.inactive, label: 'Inactive' },
-];
-
 /**
- * The template's list-page pattern (breadcrumbs → card → search toolbar →
- * status tabs → filter chips → sortable, selectable table → pagination) wired
- * to one entity.
+ * The shared admin list page, driven by the API rather than by an in-memory
+ * array: search, status filtering and paging are all query params the backend
+ * applies, and the row counters come from the response `meta`.
  *
- * Every catalog CRUD screen renders through this so they all behave the same:
- * search, status filtering, activate/deactivate, delete and pagination come for
- * free and stay consistent.
+ * `list` is a `useListRequest(...)` result, which owns the query state.
+ *
+ * There is no reorder or sort column here on purpose - the API exposes neither,
+ * and sorting one page of many would be misleading.
  */
 export function EntityList({
   heading,
   links,
-  rows,
+  list,
   columns,
-  searchFields = ['name'],
   searchPlaceholder = 'Search...',
   createLabel,
   editLabel,
@@ -77,7 +65,6 @@ export function EntityList({
   onCreate,
   onUpdate,
   onDelete,
-  onMove,
   onOpen,
   onToggleStatus,
   cascades = false,
@@ -85,48 +72,38 @@ export function EntityList({
   openLabel = 'Manage',
   describe = (row) => row.name,
   statusOf = (row) => row.status,
+  statusFilters = STATUS_FILTERS,
   extraActions,
   toolbar,
 }) {
-  const table = useTable({ defaultRowsPerPage: 10 });
+  const { rows, total, counts, query, loading, error, refresh } = list;
 
   const confirmMany = useBoolean();
 
   const [dialog, setDialog] = useState(null);
   const [confirmRow, setConfirmRow] = useState(null);
+  const [selected, setSelected] = useState([]);
+  const [search, setSearch] = useState(query.keyword);
 
-  const filters = useSetState({ query: '', status: 'all' });
+  // let the admin finish typing before asking the server again
+  useEffect(() => {
+    if (search === query.keyword) return undefined;
 
-  const dataFiltered = applyFilter({
-    inputData: rows,
-    comparator: getComparator(table.order, table.orderBy),
-    query: filters.state.query,
-    status: filters.state.status,
-    searchFields,
-    statusOf,
-  });
+    const timer = setTimeout(() => list.setKeyword(search), 400);
 
-  const dataInPage = rowInPage(dataFiltered, table.page, table.rowsPerPage);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
-  const canReset = !!filters.state.query || filters.state.status !== 'all';
+  // a page or filter change invalidates whatever was ticked
+  useEffect(() => {
+    setSelected([]);
+  }, [query.page, query.keyword, query.status]);
 
-  const notFound = !dataFiltered.length;
+  const pageKeys = rows.map(idOf);
 
-  const handleSearch = useCallback(
-    (event) => {
-      table.onResetPage();
-      filters.setState({ query: event.target.value });
-    },
-    [filters, table]
-  );
-
-  const handleStatusTab = useCallback(
-    (event, value) => {
-      table.onResetPage();
-      filters.setState({ status: value });
-    },
-    [filters, table]
-  );
+  const toggleRow = (id) =>
+    setSelected((prev) => (prev.includes(id) ? prev.filter((key) => key !== id) : [...prev, id]));
 
   const handleSubmit = async (values) => {
     if (dialog?.mode === 'edit') {
@@ -136,6 +113,7 @@ export function EntityList({
     }
 
     toast.success(dialog?.mode === 'edit' ? 'Update success!' : 'Create success!');
+    refresh();
   };
 
   const handleDeleteRow = async () => {
@@ -145,20 +123,19 @@ export function EntityList({
 
     try {
       await onDelete(row);
-
       toast.success('Delete success!');
-      table.onUpdatePageDeleteRow(dataInPage.length);
-    } catch (error) {
-      toast.error(error.message);
+      refresh();
+    } catch (deleteError) {
+      toast.error(deleteError.message);
     }
   };
 
   const handleDeleteRows = async () => {
     confirmMany.onFalse();
 
-    const selectedRows = rows.filter((row) => table.selected.includes(rowKey(row)));
+    const chosen = rows.filter((row) => selected.includes(idOf(row)));
 
-    const results = await Promise.allSettled(selectedRows.map((row) => onDelete(row)));
+    const results = await Promise.allSettled(chosen.map((row) => onDelete(row)));
 
     const failed = results.filter((result) => result.status === 'rejected');
 
@@ -168,19 +145,17 @@ export function EntityList({
       toast.success('Delete success!');
     }
 
-    table.onUpdatePageDeleteRows({
-      totalRowsInPage: dataInPage.length,
-      totalRowsFiltered: dataFiltered.length,
-    });
+    setSelected([]);
+    refresh();
   };
 
-  const handleMove = async (row, direction) => {
-    try {
-      await onMove(row, direction);
-    } catch (error) {
-      toast.error(error.message);
-    }
-  };
+  const handleToggle = useCallback(
+    async (row, status) => {
+      await onToggleStatus(row, status);
+      refresh();
+    },
+    [onToggleStatus, refresh]
+  );
 
   const tableHead = [
     ...columns.map((column) => ({ id: column.id, label: column.label, width: column.width })),
@@ -188,10 +163,16 @@ export function EntityList({
     { id: '', width: 140 },
   ];
 
-  const counts = {
-    all: rows.length,
-    [STATUS.active]: rows.filter((row) => statusOf(row) === STATUS.active).length,
-    [STATUS.inactive]: rows.filter((row) => statusOf(row) !== STATUS.active).length,
+  /** Tab counters come from `meta`; fall back to the page when it is absent. */
+  const countFor = (value) => {
+    if (!counts?.total) return value === '' ? total : undefined;
+
+    if (value === '') return counts.total;
+    if (value === STATUS.active) return counts.active;
+    if (value === STATUS.inactive) return counts.inactive;
+    if (value === STATUS.deleted) return counts.deleted;
+
+    return undefined;
   };
 
   return (
@@ -215,37 +196,44 @@ export function EntityList({
 
       <Card>
         <Tabs
-          value={filters.state.status}
-          onChange={handleStatusTab}
+          value={query.status}
+          onChange={(event, value) => list.setStatus(value)}
           sx={{ px: 2.5, boxShadow: (theme) => `inset 0 -2px 0 0 ${theme.palette.grey[500]}14` }}
         >
-          {STATUS_TABS.map((tab) => (
-            <Tab
-              key={tab.value}
-              value={tab.value}
-              label={tab.label}
-              iconPosition="end"
-              icon={
-                <Label
-                  variant={tab.value === filters.state.status ? 'filled' : 'soft'}
-                  color={
-                    (tab.value === STATUS.active && 'success') ||
-                    (tab.value === STATUS.inactive && 'default') ||
-                    'info'
-                  }
-                >
-                  {counts[tab.value]}
-                </Label>
-              }
-            />
-          ))}
+          {statusFilters.map((tab) => {
+            const count = countFor(tab.value);
+
+            return (
+              <Tab
+                key={tab.value || 'all'}
+                value={tab.value}
+                label={tab.label}
+                iconPosition="end"
+                icon={
+                  count === undefined ? undefined : (
+                    <Label
+                      variant={tab.value === query.status ? 'filled' : 'soft'}
+                      color={
+                        (tab.value === STATUS.active && 'success') ||
+                        (tab.value === STATUS.deleted && 'error') ||
+                        (tab.value === STATUS.inactive && 'default') ||
+                        'info'
+                      }
+                    >
+                      {count}
+                    </Label>
+                  )
+                }
+              />
+            );
+          })}
         </Tabs>
 
         <Stack spacing={2} sx={{ p: 2.5 }} direction={{ xs: 'column', md: 'row' }}>
           <TextField
             fullWidth
-            value={filters.state.query}
-            onChange={handleSearch}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
             placeholder={searchPlaceholder}
             InputProps={{
               startAdornment: (
@@ -253,6 +241,13 @@ export function EntityList({
                   <Iconify icon="eva:search-fill" sx={{ color: 'text.disabled' }} />
                 </InputAdornment>
               ),
+              endAdornment: search ? (
+                <InputAdornment position="end">
+                  <IconButton size="small" onClick={() => setSearch('')}>
+                    <Iconify icon="eva:close-fill" />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
             }}
           />
 
@@ -261,42 +256,29 @@ export function EntityList({
 
         {toolbar}
 
-        {canReset && (
-          <FiltersResult
-            totalResults={dataFiltered.length}
-            onReset={() => filters.setState({ query: '', status: 'all' })}
-            sx={{ p: 2.5, pt: 0 }}
+        {!!error && (
+          <Alert
+            severity="error"
+            sx={{ mx: 2.5, mb: 2.5 }}
+            action={
+              <Button color="inherit" size="small" onClick={refresh}>
+                Retry
+              </Button>
+            }
           >
-            <FiltersBlock label="Search:" isShow={!!filters.state.query}>
-              <Chip
-                {...chipProps}
-                label={filters.state.query}
-                onDelete={() => {
-                  table.onResetPage();
-                  filters.setState({ query: '' });
-                }}
-              />
-            </FiltersBlock>
-
-            <FiltersBlock label="Status:" isShow={filters.state.status !== 'all'}>
-              <Chip
-                {...chipProps}
-                label={filters.state.status}
-                onDelete={() => {
-                  table.onResetPage();
-                  filters.setState({ status: 'all' });
-                }}
-              />
-            </FiltersBlock>
-          </FiltersResult>
+            {error.message}
+          </Alert>
         )}
 
         <Box sx={{ position: 'relative' }}>
+          {loading && (
+            <LinearProgress sx={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 9 }} />
+          )}
+
           <TableSelectedAction
-            dense={table.dense}
-            numSelected={table.selected.length}
-            rowCount={dataFiltered.length}
-            onSelectAllRows={(checked) => table.onSelectAllRows(checked, dataFiltered.map(rowKey))}
+            numSelected={selected.length}
+            rowCount={rows.length}
+            onSelectAllRows={(checked) => setSelected(checked ? pageKeys : [])}
             action={
               onDelete && (
                 <Tooltip title="Delete">
@@ -309,38 +291,27 @@ export function EntityList({
           />
 
           <Scrollbar>
-            <Table size={table.dense ? 'small' : 'medium'} sx={{ minWidth: 800 }}>
+            <Table sx={{ minWidth: 800 }}>
               <TableHeadCustom
-                order={table.order}
-                orderBy={table.orderBy}
                 headLabel={tableHead}
-                rowCount={dataFiltered.length}
-                numSelected={table.selected.length}
-                onSort={table.onSort}
-                onSelectAllRows={(checked) =>
-                  table.onSelectAllRows(checked, dataFiltered.map(rowKey))
-                }
+                rowCount={rows.length}
+                numSelected={selected.length}
+                onSelectAllRows={(checked) => setSelected(checked ? pageKeys : [])}
               />
 
               <TableBody>
-                {dataFiltered
-                  .slice(
-                    table.page * table.rowsPerPage,
-                    table.page * table.rowsPerPage + table.rowsPerPage
-                  )
-                  .map((row, index) => (
+                {rows.map((row) => {
+                  const key = idOf(row);
+
+                  return (
                     <TableRow
-                      key={rowKey(row)}
+                      key={key}
                       hover
-                      selected={table.selected.includes(rowKey(row))}
+                      selected={selected.includes(key)}
                       sx={statusOf(row) === STATUS.active ? undefined : { opacity: 0.6 }}
                     >
                       <TableCell padding="checkbox">
-                        <Checkbox
-                          id={rowKey(row)}
-                          checked={table.selected.includes(rowKey(row))}
-                          onClick={() => table.onSelectRow(rowKey(row))}
-                        />
+                        <Checkbox checked={selected.includes(key)} onClick={() => toggleRow(key)} />
                       </TableCell>
 
                       {columns.map((column) => (
@@ -354,44 +325,12 @@ export function EntityList({
 
                       {onToggleStatus && (
                         <TableCell>
-                          <StatusSwitch
-                            row={row}
-                            cascades={cascades}
-                            hiddenByParent={!!row.hiddenByParent}
-                            onToggle={onToggleStatus}
-                          />
+                          <StatusSwitch row={row} cascades={cascades} onToggle={handleToggle} />
                         </TableCell>
                       )}
 
                       <TableCell align="right">
                         <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                          {onMove && (
-                            <>
-                              <Tooltip title="Move up">
-                                <span>
-                                  <IconButton
-                                    size="small"
-                                    disabled={index === 0 || table.page > 0 || canReset}
-                                    onClick={() => handleMove(row, -1)}
-                                  >
-                                    <Iconify icon="eva:arrow-ios-upward-fill" />
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
-                              <Tooltip title="Move down">
-                                <span>
-                                  <IconButton
-                                    size="small"
-                                    disabled={index === dataFiltered.length - 1 || canReset}
-                                    onClick={() => handleMove(row, 1)}
-                                  >
-                                    <Iconify icon="eva:arrow-ios-downward-fill" />
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
-                            </>
-                          )}
-
                           {onUpdate && (
                             <Tooltip title="Edit">
                               <IconButton
@@ -423,27 +362,21 @@ export function EntityList({
                         </Stack>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  );
+                })}
 
-                <TableEmptyRows
-                  height={table.dense ? 56 : 56 + 20}
-                  emptyRows={emptyRows(table.page, table.rowsPerPage, dataFiltered.length)}
-                />
-
-                <TableNoData notFound={notFound} />
+                <TableNoData notFound={!loading && !error && !rows.length} />
               </TableBody>
             </Table>
           </Scrollbar>
         </Box>
 
         <TablePaginationCustom
-          page={table.page}
-          dense={table.dense}
-          count={dataFiltered.length}
-          rowsPerPage={table.rowsPerPage}
-          onPageChange={table.onChangePage}
-          onChangeDense={table.onChangeDense}
-          onRowsPerPageChange={table.onChangeRowsPerPage}
+          page={query.page - 1}
+          count={total}
+          rowsPerPage={query.limit}
+          onPageChange={(event, page) => list.setPage(page + 1)}
+          onRowsPerPageChange={(event) => list.setLimit(Number(event.target.value))}
         />
       </Card>
 
@@ -491,7 +424,7 @@ export function EntityList({
         title="Delete"
         content={
           <>
-            Are you sure want to delete <strong> {table.selected.length} </strong> items?
+            Are you sure want to delete <strong> {selected.length} </strong> items?
             {!!deleteNote && (
               <Box component="span" sx={{ display: 'block', mt: 1 }}>
                 {deleteNote}
@@ -507,43 +440,4 @@ export function EntityList({
       />
     </DashboardContent>
   );
-}
-
-// ----------------------------------------------------------------------
-
-/** Flattened admin modules carry a composite `rowId`; catalog rows use `id`. */
-function rowKey(row) {
-  return row.rowId ?? row.id;
-}
-
-function applyFilter({ inputData, comparator, query, status, searchFields, statusOf }) {
-  const stabilized = inputData.map((el, index) => [el, index]);
-
-  stabilized.sort((a, b) => {
-    const order = comparator(a[0], b[0]);
-    if (order !== 0) return order;
-    return a[1] - b[1];
-  });
-
-  let data = stabilized.map((el) => el[0]);
-
-  if (status !== 'all') {
-    data = data.filter((row) =>
-      status === STATUS.active ? statusOf(row) === STATUS.active : statusOf(row) !== STATUS.active
-    );
-  }
-
-  if (query) {
-    const needle = query.toLowerCase();
-
-    data = data.filter((row) =>
-      searchFields.some((field) =>
-        String(row[field] ?? '')
-          .toLowerCase()
-          .includes(needle)
-      )
-    );
-  }
-
-  return data;
 }

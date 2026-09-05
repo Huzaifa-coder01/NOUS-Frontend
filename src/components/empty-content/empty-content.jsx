@@ -7,16 +7,7 @@ import { varAlpha } from 'src/theme/styles';
 
 // ----------------------------------------------------------------------
 
-export function EmptyContent({
-  sx,
-  imgUrl,
-  action,
-  filled,
-  slotProps,
-  description,
-  title = 'No data',
-  ...other
-}) {
+export function EmptyContent({ sx, imgUrl, action, filled, slotProps, description, title = 'No Data', ...other }) {
   return (
     <Stack
       flexGrow={1}
@@ -34,13 +25,6 @@ export function EmptyContent({
       }}
       {...other}
     >
-      <Box
-        component="img"
-        alt="empty content"
-        src={imgUrl ?? `${CONFIG.site.basePath}/assets/icons/empty/ic-content.svg`}
-        sx={{ width: 1, maxWidth: 160, ...slotProps?.img }}
-      />
-
       {title && (
         <Typography
           variant="h6"

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo } from 'react';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -13,9 +13,9 @@ import { paths } from 'src/routes/paths';
 
 import { useTabs } from 'src/hooks/use-tabs';
 
-import { usersApi } from 'src/lib/mock-server';
-import { useNousData } from 'src/context/nous-data';
+import { idOf } from 'src/constants/nous';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useGetUsersQuery, useGetLevelsQuery, useGetCoursesQuery, useGetSubjectsQuery, useGetChaptersQuery } from 'src/store';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -30,11 +30,6 @@ import { ProfileCover } from '../profile-cover';
 const TABS = [
   { value: 'profile', label: 'Profile', icon: <Iconify icon="solar:user-id-bold" width={24} /> },
   { value: 'catalog', label: 'Catalog', icon: <Iconify icon="solar:notebook-bold" width={24} /> },
-  {
-    value: 'team',
-    label: 'Team',
-    icon: <Iconify icon="solar:users-group-rounded-bold" width={24} />,
-  },
 ];
 
 // ----------------------------------------------------------------------
@@ -70,40 +65,27 @@ function StatCard({ label, value }) {
 export function UserProfileView() {
   const { user } = useAuthContext();
 
-  const { adminCourses } = useNousData();
-
   const tabs = useTabs('profile');
 
-  const [team, setTeam] = useState([]);
+  const courses = useGetCoursesQuery({ page: 1, limit: 50 });
 
-  useEffect(() => {
-    usersApi
-      .list()
-      .then(setTeam)
-      .catch((error) => console.error('[profile] users load failed:', error));
-  }, []);
+  // one page-of-one query per resource is enough: the counters live in `meta`
+  const head = { page: 1, limit: 1 };
 
-  const stats = useMemo(() => {
-    const levels = adminCourses.flatMap((course) => course.levels);
-    const subjects = levels.flatMap((level) => level.subjects);
-    const chapters = subjects.flatMap((subject) => subject.chapters);
+  const courseHead = useGetCoursesQuery(head);
+  const levelHead = useGetLevelsQuery(head);
+  const subjectHead = useGetSubjectsQuery(head);
+  const chapterHead = useGetChaptersQuery(head);
 
-    const pdfs = [
-      ...subjects.flatMap((subject) => subject.pastPapers ?? []),
-      ...chapters.flatMap((chapter) => [
-        ...(chapter.pastPapers ?? []),
-        ...(chapter.syllabus ?? []),
-        ...(chapter.notes ?? []),
-      ]),
-    ];
-
-    return {
-      courses: adminCourses.length,
-      subjects: subjects.length,
-      chapters: chapters.length,
-      pdfs: pdfs.length,
-    };
-  }, [adminCourses]);
+  const stats = useMemo(
+    () => ({
+      courses: courseHead.data?.counts?.total ?? 0,
+      levels: levelHead.data?.counts?.total ?? 0,
+      subjects: subjectHead.data?.counts?.total ?? 0,
+      chapters: chapterHead.data?.counts?.total ?? 0,
+    }),
+    [courseHead.data, levelHead.data, subjectHead.data, chapterHead.data]
+  );
 
   const renderProfile = (
     <Grid container spacing={3}>
@@ -116,16 +98,8 @@ export function UserProfileView() {
           <Stack spacing={2}>
             <InfoRow icon="solar:user-bold" label="Name" value={user?.name} />
             <InfoRow icon="solar:letter-bold" label="Email" value={user?.email} />
-            <InfoRow
-              icon="solar:shield-user-bold"
-              label="Role"
-              value={user?.role === 'admin' ? 'Administrator' : 'Student'}
-            />
-            <InfoRow
-              icon="solar:calendar-date-bold"
-              label="Joined"
-              value={user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
-            />
+            <InfoRow icon="solar:shield-user-bold" label="Role" value={user?.role === 'admin' ? 'Administrator' : 'Student'} />
+            <InfoRow icon="solar:calendar-date-bold" label="Joined" value={user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'} />
           </Stack>
         </Card>
       </Grid>
@@ -142,7 +116,7 @@ export function UserProfileView() {
             <StatCard label="Chapters" value={stats.chapters} />
           </Grid>
           <Grid xs={6} sm={3}>
-            <StatCard label="PDFs" value={stats.pdfs} />
+            <StatCard label="Levels" value={stats.levels} />
           </Grid>
 
           <Grid xs={12}>
@@ -152,9 +126,8 @@ export function UserProfileView() {
               </Typography>
 
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                As an administrator you control the entire catalog — courses, levels, subjects,
-                chapters and the syllabus, notes and past papers students read — plus every account
-                and the site branding. Students can only upload notes.
+                As an administrator you control the entire catalog — courses, levels, subjects, chapters and the syllabus, notes and past papers students read — plus every account.
+                Students can only upload notes.
               </Typography>
             </Card>
           </Grid>
@@ -165,49 +138,21 @@ export function UserProfileView() {
 
   const renderCatalog = (
     <Card>
-      {adminCourses.map((course, index) => (
-        <Box key={course.id}>
+      {(courses.data?.rows ?? []).map((course, index) => (
+        <Box key={idOf(course)}>
           {index > 0 && <Divider />}
 
           <Stack direction="row" alignItems="center" spacing={2} sx={{ p: 3 }}>
-            <Box sx={{ fontSize: 28 }}>{course.icon}</Box>
+            <Box sx={{ fontSize: 28 }}>{course.emoji}</Box>
 
             <Box sx={{ flexGrow: 1 }}>
               <Typography variant="subtitle1">{course.name}</Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                {course.levels.length} levels ·{' '}
-                {course.levels.reduce((total, level) => total + level.subjects.length, 0)} subjects
+                {course.contentCount?.activeLevels ?? 0} levels · {course.contentCount?.activeSubjects ?? 0} subjects
               </Typography>
             </Box>
 
-            <Label color={course.status === 'active' ? 'success' : 'default'}>
-              {course.status}
-            </Label>
-          </Stack>
-        </Box>
-      ))}
-    </Card>
-  );
-
-  const renderTeam = (
-    <Card>
-      {team.map((member, index) => (
-        <Box key={member.id}>
-          {index > 0 && <Divider />}
-
-          <Stack direction="row" alignItems="center" spacing={2} sx={{ p: 3 }}>
-            <Box sx={{ flexGrow: 1 }}>
-              <Typography variant="subtitle2">{member.name}</Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                {member.email}
-              </Typography>
-            </Box>
-
-            <Label color={member.role === 'admin' ? 'info' : 'default'}>
-              {member.role === 'admin' ? 'Admin' : 'Student'}
-            </Label>
-
-            <Label color={member.status === 'active' ? 'success' : 'error'}>{member.status}</Label>
+            <Label color={course.status === 'active' ? 'success' : 'default'}>{course.status}</Label>
           </Stack>
         </Box>
       ))}
@@ -216,17 +161,13 @@ export function UserProfileView() {
 
   return (
     <DashboardContent>
-      <CustomBreadcrumbs
-        heading="Profile"
-        links={[{ name: 'Admin', href: paths.admin.root }, { name: 'Profile' }]}
-        sx={{ mb: { xs: 3, md: 5 } }}
-      />
+      <CustomBreadcrumbs heading="Profile" links={[{ name: 'Admin', href: paths.admin.root }, { name: 'Profile' }]} sx={{ mb: { xs: 3, md: 5 } }} />
 
       <Card sx={{ mb: 3, height: 290 }}>
         <ProfileCover
           role={user?.role === 'admin' ? 'Administrator' : 'Student'}
           name={user?.name}
-          avatarUrl={undefined}
+          avatarUrl={user?.profileIcon || undefined}
           coverUrl="/assets/background/background-4.jpg"
         />
 
@@ -253,7 +194,7 @@ export function UserProfileView() {
 
       {tabs.value === 'profile' && renderProfile}
       {tabs.value === 'catalog' && renderCatalog}
-      {tabs.value === 'team' && renderTeam}
+      
     </DashboardContent>
   );
 }

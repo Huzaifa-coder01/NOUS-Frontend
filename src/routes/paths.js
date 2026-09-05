@@ -41,6 +41,7 @@ export const paths = {
     jwt: {
       signIn: `${ROOTS.AUTH}/sign-in`,
       signUp: `${ROOTS.AUTH}/sign-up`,
+      verifyEmail: `${ROOTS.AUTH}/verify-email`,
       forgetPassword: `${ROOTS.AUTH}/forget-password`,
       verifyPassword: `${ROOTS.AUTH}/verify-password`,
       resetPassword: `${ROOTS.AUTH}/reset-password`,

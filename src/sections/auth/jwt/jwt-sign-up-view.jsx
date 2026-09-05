@@ -63,15 +63,15 @@ export function JwtSignUpView() {
 
   const onSubmit = handleSubmit(async (data) => {
     try {
+      // register creates the account as pending and emails an OTP, so there is
+      // no session yet - the next step is verifying that code
       await signUp({
         name: `${data.firstName} ${data.lastName}`.trim(),
         email: data.email,
         password: data.password,
       });
 
-      await checkUserSession?.();
-
-      navigate(paths.nous.root, { replace: true });
+      navigate(paths.auth.jwt.verifyEmail);
     } catch (error) {
       console.error(error);
       setErrorMsg(error instanceof Error ? error.message : error);

@@ -134,7 +134,9 @@ export function fDisplayTime(date) {
 
   const isValid = dayjs(date).isValid();
 
-  return isValid ? dayjs(date).format('h.mm A').replace('AM', 'a.m.').replace('PM', 'p.m.') : 'Invalid time value';
+  return isValid
+    ? dayjs(date).format('h.mm A').replace('AM', 'a.m.').replace('PM', 'p.m.')
+    : 'Invalid time value';
 }
 
 // ----------------------------------------------------------------------

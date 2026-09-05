@@ -14,7 +14,7 @@ import FormHelperText from '@mui/material/FormHelperText';
 
 import { Iconify } from 'src/components/iconify';
 
-import { MAX_FILE_SIZE, formatFileSize } from 'src/lib/file-store';
+import { MAX_FILE_SIZE, formatFileSize } from 'src/store';
 
 // ----------------------------------------------------------------------
 
@@ -65,7 +65,7 @@ export function EntityDialog({
   onSubmit,
 }) {
   const [values, setValues] = useState(initialValues ?? {});
-  const [errorMessage, setErrorMessage] = useState('');
+  const [handleApiError, setErrorMessage] = useState('');
   const [fileError, setFileError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -129,7 +129,7 @@ export function EntityDialog({
               <Typography sx={{ fontSize: 14, color: 'text.secondary' }}>{description}</Typography>
             )}
 
-            {!!errorMessage && <Alert severity="error">{errorMessage}</Alert>}
+            {!!handleApiError && <Alert severity="error">{handleApiError}</Alert>}
 
             {fields.map((field) =>
               field.type === 'file' ? (

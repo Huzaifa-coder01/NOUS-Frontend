@@ -155,17 +155,22 @@ export function HeaderBase({
                   setMode(nextMode);
                 }}
               >
-                {mode === 'light' ? <Iconify icon="solar:sun-2-bold" width={{ xs: 20, sm: 24 }} /> : <Iconify icon="ion:moon-sharp" width={{ xs: 20, sm: 24 }} />}
+                {mode === 'light' ? (
+                  <Iconify icon="solar:sun-2-bold" width={{ xs: 20, sm: 24 }} />
+                ) : (
+                  <Iconify icon="ion:moon-sharp" width={{ xs: 20, sm: 24 }} />
+                )}
               </IconButton>
 
               {/* -- Nav color toggle (integrate / apparent) -- */}
-              {navColorToggle && (
+              {/* {navColorToggle && (
                 <IconButton
                   data-slot="nav-color-toggle"
                   aria-label="Toggle sidebar color style"
                   sx={{ mr: 1 }}
                   onClick={() => {
-                    const nextNavColor = settingsCtx.navColor === 'integrate' ? 'apparent' : 'integrate';
+                    const nextNavColor =
+                      settingsCtx.navColor === 'integrate' ? 'apparent' : 'integrate';
                     settingsCtx.onUpdateField('navColor', nextNavColor);
                   }}
                 >
@@ -174,7 +179,7 @@ export function HeaderBase({
                     sx={{ width: { xs: 20, sm: 24 }, height: { xs: 20, sm: 24 } }}
                   />
                 </IconButton>
-              )}
+              )} */}
 
               {/* -- Settings button -- */}
               {/* <Box sx={{ pr: 1.5 }}>{settings && <SettingsButton data-slot="settings" />}</Box> */}

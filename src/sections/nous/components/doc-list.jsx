@@ -1,8 +1,11 @@
 import { useState } from 'react';
 
+import { fDate } from 'src/utils/format-time';
+
 import { toast } from 'src/components/snackbar';
 
-import { openFile, downloadFile, formatFileSize } from 'src/lib/file-store';
+import { idOf } from 'src/constants/nous';
+import { openFile, fileUrlOf, downloadFile, formatFileSize } from 'src/store';
 
 import { DocList as DocListRoot, DocItem, DocButton, EmptyState } from '../styles';
 
@@ -10,24 +13,19 @@ import { DocList as DocListRoot, DocItem, DocButton, EmptyState } from '../style
 
 const ICONS = { 'past-paper': '\u{1F4C4}', syllabus: '\u{1F4CB}', note: '\u{1F4DD}' };
 
+/** The uploader is populated on notes; past papers and syllabus are admin owned. */
 function describe(doc) {
-  if (doc.kind === 'past-paper') {
-    return [
-      [doc.session, doc.year].filter(Boolean).join(' '),
-      doc.type,
-      formatFileSize(doc.fileSize),
-    ]
-      .filter(Boolean)
-      .join(' · ');
-  }
+  const parts = [];
 
-  if (doc.kind === 'note') {
-    return [`Shared by ${doc.uploadedBy?.name ?? 'a student'}`, formatFileSize(doc.fileSize)]
-      .filter(Boolean)
-      .join(' · ');
-  }
+  if (doc.uploadedBy?.name) parts.push(`Shared by ${doc.uploadedBy.name}`);
 
-  return formatFileSize(doc.fileSize);
+  if (doc.createdAt) parts.push(fDate(doc.createdAt));
+
+  const size = formatFileSize(doc.fileSize);
+
+  if (size) parts.push(size);
+
+  return parts.join(' \u00b7 ');
 }
 
 // ----------------------------------------------------------------------
@@ -35,11 +33,13 @@ function describe(doc) {
 function DocRow({ doc }) {
   const [busy, setBusy] = useState(false);
 
-  const run = (action) => async () => {
+  const missing = !fileUrlOf(doc);
+
+  const run = (action) => () => {
     setBusy(true);
 
     try {
-      await action(doc);
+      action(doc);
     } catch (error) {
       toast.error(error?.message ?? 'Could not open this PDF');
     } finally {
@@ -55,14 +55,19 @@ function DocRow({ doc }) {
         <div className="doc-name" title={doc.name}>
           {doc.name}
         </div>
-        <div className="doc-meta">{describe(doc)}</div>
+        <div className="doc-meta">{missing ? 'No file attached' : describe(doc)}</div>
       </div>
 
       <div className="doc-actions">
-        <DocButton type="button" variant="primary" disabled={busy} onClick={run(openFile)}>
+        <DocButton
+          type="button"
+          variant="primary"
+          disabled={busy || missing}
+          onClick={run(openFile)}
+        >
           Open
         </DocButton>
-        <DocButton type="button" disabled={busy} onClick={run(downloadFile)}>
+        <DocButton type="button" disabled={busy || missing} onClick={run(downloadFile)}>
           Download
         </DocButton>
       </div>
@@ -72,7 +77,7 @@ function DocRow({ doc }) {
 
 // ----------------------------------------------------------------------
 
-/** `docs` must already be filtered to what the student may see. */
+/** `docs` is whatever the API returned - a student only ever gets active rows. */
 export function DocumentList({ docs, emptyTitle, emptyHint }) {
   if (!docs.length) {
     return (
@@ -86,7 +91,7 @@ export function DocumentList({ docs, emptyTitle, emptyHint }) {
   return (
     <DocListRoot>
       {docs.map((doc) => (
-        <DocRow key={doc.id} doc={doc} />
+        <DocRow key={idOf(doc)} doc={doc} />
       ))}
     </DocListRoot>
   );

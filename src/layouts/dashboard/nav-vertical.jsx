@@ -38,7 +38,11 @@ export function NavVertical({ sx, data, slots, isNavMini, layoutQuery, onToggleN
         </Box>
       )}
 
-      <NavSectionMini data={data} sx={{ pb: 2, px: 0.5, ...hideScrollY, flex: '1 1 auto', overflowY: 'auto' }} {...other} />
+      <NavSectionMini
+        data={data}
+        sx={{ pb: 2, px: 0.5, ...hideScrollY, flex: '1 1 auto', overflowY: 'auto' }}
+        {...other}
+      />
 
       {slots?.bottomArea}
     </>

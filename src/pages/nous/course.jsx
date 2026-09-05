@@ -4,7 +4,8 @@ import { Navigate } from 'react-router-dom';
 import { paths } from 'src/routes/paths';
 
 import { CONFIG } from 'src/config-global';
-import { useNousRouteData } from 'src/hooks/use-nous-route-data';
+import { useCatalogChain } from 'src/hooks/use-catalog-chain';
+import { handleApiError, useGetLevelsQuery } from 'src/store';
 
 import { LoadingScreen } from 'src/components/loading-screen';
 
@@ -13,7 +14,9 @@ import { NousCourseView } from 'src/sections/nous/view';
 // ----------------------------------------------------------------------
 
 export default function Page() {
-  const { loading, course, notFound } = useNousRouteData();
+  const { ids, course, loading, notFound } = useCatalogChain();
+
+  const levels = useGetLevelsQuery({ courseId: ids.courseId, limit: 100 }, { skip: !ids.courseId });
 
   if (notFound) {
     return <Navigate to={paths.nous.root} replace />;
@@ -29,7 +32,12 @@ export default function Page() {
         <title> {`${course.name} - ${CONFIG.site.name}`}</title>
       </Helmet>
 
-      <NousCourseView course={course} />
+      <NousCourseView
+        course={course}
+        levels={levels.data?.rows ?? []}
+        error={levels.error && { message: handleApiError(levels.error) }}
+        onRetry={levels.refetch}
+      />
     </>
   );
 }

@@ -1,15 +1,15 @@
 import { paths } from 'src/routes/paths';
 
 import { nousAccent } from 'src/theme/palette';
-import { levelTotals } from 'src/utils/catalog';
+import { idOf, contentCount } from 'src/constants/nous';
 
-import { NousCard, PageTitle, BackButton, Breadcrumbs } from '../components';
+import { NousCard, PageTitle, BackButton, Breadcrumbs, ScreenError } from '../components';
 import { CardsGrid, EmptyState } from '../styles';
 
 // ----------------------------------------------------------------------
 
-/** Step 2: the active levels of the selected course. */
-export function NousCourseView({ course }) {
+/** Step 2: `GET /levels?courseId=` - the active levels of the chosen course. */
+export function NousCourseView({ course, levels, error, onRetry }) {
   return (
     <>
       <BackButton href={paths.nous.root} />
@@ -18,23 +18,21 @@ export function NousCourseView({ course }) {
 
       <PageTitle title={course.name} subtitle="Select your level" />
 
-      {course.levels.length ? (
+      {error ? (
+        <ScreenError error={error} onRetry={onRetry} />
+      ) : levels.length ? (
         <CardsGrid>
-          {course.levels.map((level, index) => {
-            const { subjects, chapters } = levelTotals(level);
-
-            return (
-              <NousCard
-                key={level.id}
-                href={paths.nous.level(course.id, level.id)}
-                icon={'\u{1F4D6}'}
-                title={level.name}
-                description="Explore subjects"
-                meta={`${subjects} subjects · ${chapters} chapters`}
-                accent={nousAccent(index)}
-              />
-            );
-          })}
+          {levels.map((level, index) => (
+            <NousCard
+              key={idOf(level)}
+              href={paths.nous.level(idOf(course), idOf(level))}
+              icon={level.emoji || '\u{1F4D6}'}
+              title={level.name}
+              description="Explore subjects"
+              meta={`${contentCount(level, 'activeSubjects')} subjects · ${contentCount(level, 'activeChapters')} chapters`}
+              accent={nousAccent(index)}
+            />
+          ))}
         </CardsGrid>
       ) : (
         <EmptyState>

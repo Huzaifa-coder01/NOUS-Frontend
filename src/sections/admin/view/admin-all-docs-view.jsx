@@ -1,165 +1,139 @@
-import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import Typography from '@mui/material/Typography';
 
 import { paths } from 'src/routes/paths';
 
-import { docsApi } from 'src/lib/mock-server';
-import { useNousData } from 'src/context/nous-data';
-import { DOC_LABELS, PAPER_TYPES, PAPER_SESSIONS } from 'src/_mock/_nous';
+import { idOf, DOC_LABELS } from 'src/constants/nous';
+import { useListQuery } from 'src/hooks/use-list-query';
+import { documentHooks, useUploadFileMutation } from 'src/store';
 
 import { EntityList } from '../components/entity-list';
-import { nameColumn, fileColumn, paperColumns, uploadedColumn } from '../components/doc-columns';
+import { nameColumn, fileColumn, uploadedColumn } from '../components/doc-columns';
 
 // ----------------------------------------------------------------------
 
-const NAME_FIELD = {
-  name: 'name',
-  label: 'PDF name',
-  required: true,
-  helperText: 'Must be unique across the whole system',
-};
-
-const FILE_FIELD = {
-  name: 'file',
-  type: 'file',
-  label: 'Replace PDF (optional)',
-  helperText: 'Leave empty to keep the current file',
-};
-
-const PAPER_FIELDS = [
-  { name: 'year', label: 'Year', type: 'number', required: true },
+const FIELDS = [
   {
-    name: 'session',
-    label: 'Session',
-    type: 'select',
-    options: PAPER_SESSIONS.map((value) => ({ value, label: value })),
+    name: 'name',
+    label: 'PDF name',
+    required: true,
+    helperText: 'Must be unique across every PDF in the system',
   },
   {
-    name: 'type',
-    label: 'Paper type',
-    type: 'select',
-    options: PAPER_TYPES.map((value) => ({ value, label: value })),
+    name: 'file',
+    type: 'file',
+    label: 'Replace PDF (optional)',
+    helperText: 'Leave empty to keep the current file',
   },
 ];
 
-/** Where each document lives - the whole point of these cross-catalog modules. */
+/** A relation is populated on these rows, but fall back to a bare id. */
+function nameOf(value) {
+  if (!value) return null;
+
+  return typeof value === 'object' ? value.name : null;
+}
+
+/** Where the document lives - the whole point of the cross-catalog modules. */
 const locationColumn = {
-  id: 'courseName',
+  id: 'course',
   label: 'Course / level / subject / chapter',
-  render: (row) => (
-    <>
-      <Typography variant="body2">
-        {row.courseName} · {row.levelName}
-      </Typography>
-      <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-        {row.subjectName}
-        {row.chapterName ? ` · ${row.chapterName}` : ' · whole subject'}
-      </Typography>
-    </>
-  ),
+  render: (row) => {
+    const course = nameOf(row.course ?? row.courseId);
+    const level = nameOf(row.level ?? row.levelId);
+    const subject = nameOf(row.subject ?? row.subjectId);
+    const chapter = row.chapter ?? row.chapterId;
+
+    const chapterLabel =
+      chapter && typeof chapter === 'object'
+        ? `Chapter ${chapter.chapterNumber ?? ''} ${chapter.name ?? ''}`.trim()
+        : null;
+
+    return (
+      <>
+        <Typography variant="body2">
+          {[course, level].filter(Boolean).join(' · ') || '—'}
+        </Typography>
+        <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+          {[subject, chapterLabel ?? 'whole subject'].filter(Boolean).join(' · ')}
+        </Typography>
+      </>
+    );
+  },
 };
 
 // ----------------------------------------------------------------------
 
 /**
- * A cross-catalog module for one document kind: every past paper, syllabus or
- * student note in the system on one searchable page, with its full course /
- * level / subject / chapter context.
+ * Every document of one kind, wherever it sits, with the hierarchy it belongs
+ * to. This is the notes management module the brief asks for - students upload
+ * from the chapter page and everything else about a note happens here.
  *
- * This is the notes management module the admin needs - students upload notes
- * from the chapter page, and everything else about them happens here.
+ * Creating is left to the scoped screens, which know the parent ids.
  */
 export function AdminAllDocsView({ kind, heading, subheading }) {
-  const { courses, refresh } = useNousData();
-
   const navigate = useNavigate();
 
-  const [rows, setRows] = useState([]);
+  const hooks = documentHooks[kind];
 
-  useEffect(() => {
-    let live = true;
+  const list = useListQuery(hooks.useList);
 
-    docsApi
-      .listAll(kind)
-      .then((next) => {
-        if (live) setRows(next);
-      })
-      .catch((error) => console.error('[admin] documents load failed:', error));
-
-    return () => {
-      live = false;
-    };
-    // re-runs after every catalog refresh
-  }, [kind, courses]);
+  const [uploadFile] = useUploadFileMutation();
+  const [update] = hooks.useUpdate();
+  const [remove] = hooks.useDelete();
 
   const columns = [
     nameColumn,
     locationColumn,
-    ...(kind === 'past-paper' ? paperColumns : []),
     ...(kind === 'note' ? [uploadedColumn] : []),
     fileColumn,
   ];
 
-  const openOwner = (row) =>
-    navigate(
-      row.chapterName
-        ? paths.admin.catalog.chapterSection(
-            row.path.courseId,
-            row.path.levelId,
-            row.path.subjectId,
-            row.path.chapterId,
-            kind === 'past-paper' ? 'past-papers' : kind === 'note' ? 'notes' : 'syllabus'
-          )
-        : paths.admin.catalog.subjectPastPapers(
-            row.path.courseId,
-            row.path.levelId,
-            row.path.subjectId
-          )
-    );
+  /** Jumps to the screen that owns the document. */
+  const openOwner = (row) => {
+    const courseId = idOf(row.course ?? row.courseId) ?? row.courseId;
+    const levelId = idOf(row.level ?? row.levelId) ?? row.levelId;
+    const subjectId = idOf(row.subject ?? row.subjectId) ?? row.subjectId;
+    const chapterId = idOf(row.chapter ?? row.chapterId) ?? row.chapterId;
+
+    if (!courseId || !levelId || !subjectId) return;
+
+    if (chapterId) {
+      const section = { 'past-paper': 'past-papers', note: 'notes', syllabus: 'syllabus' }[kind];
+
+      navigate(
+        paths.admin.catalog.chapterSection(courseId, levelId, subjectId, chapterId, section)
+      );
+      return;
+    }
+
+    navigate(paths.admin.catalog.subjectPastPapers(courseId, levelId, subjectId));
+  };
 
   return (
     <EntityList
       heading={heading}
       links={[{ name: 'Admin', href: paths.admin.root }, { name: heading }]}
-      rows={rows}
+      list={list}
       columns={columns}
-      searchFields={[
-        'name',
-        'fileName',
-        'courseName',
-        'levelName',
-        'subjectName',
-        'chapterName',
-        'session',
-        'type',
-      ]}
-      searchPlaceholder={`Search ${DOC_LABELS[kind].plural.toLowerCase()}, course, subject or chapter...`}
-      fields={() => [NAME_FIELD, FILE_FIELD, ...(kind === 'past-paper' ? PAPER_FIELDS : [])]}
+      searchPlaceholder={`Search ${DOC_LABELS[kind].plural.toLowerCase()}...`}
       editLabel="Edit PDF"
+      fields={FIELDS}
       describe={(row) => row.name}
-      deleteNote="The PDF file is removed as well - this cannot be undone."
-      // a document can be active yet still hidden because a parent is switched
-      // off; filter on what a student would actually get
-      statusOf={(row) => row.effectiveStatus}
-      toValues={(row) => ({
-        name: row.name,
-        file: null,
-        ...(kind === 'past-paper' ? { year: row.year, session: row.session, type: row.type } : {}),
-      })}
+      deleteNote="Deleting marks the PDF deleted server side; students stop seeing it straight away."
+      toValues={(row) => ({ name: row.name, file: null })}
       onUpdate={async (row, values) => {
-        await docsApi.update(kind, row.path, row.id, values);
-        await refresh();
+        const stored = values.file ? await uploadFile(values.file).unwrap() : null;
+
+        return update({
+          id: idOf(row),
+          name: values.name,
+          ...(stored ? { file: stored.file, fileUrl: stored.fileUrl } : {}),
+        }).unwrap();
       }}
-      onToggleStatus={async (row, status) => {
-        await docsApi.setStatus(kind, row.path, row.id, status);
-        await refresh();
-      }}
-      onDelete={async (row) => {
-        await docsApi.remove(kind, row.path, row.id);
-        await refresh();
-      }}
+      onToggleStatus={(row, status) => update({ id: idOf(row), status }).unwrap()}
+      onDelete={(row) => remove(idOf(row)).unwrap()}
       onOpen={openOwner}
       openLabel="Go to"
       toolbar={
