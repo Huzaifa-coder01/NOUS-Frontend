@@ -414,7 +414,11 @@ export const Avatar = styled('span')({
   fontWeight: 'bold',
   fontSize: 14,
   color: '#ffffff',
+  overflow: 'hidden',
+  flexShrink: 0,
   background: `linear-gradient(135deg, ${NOUS_COLORS.accent} 0%, ${NOUS_COLORS.accentLight} 100%)`,
+  // a profile picture fills the circle; without one the initial shows through
+  '& img': { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
 });
 
 export const HeaderText = styled('span')({

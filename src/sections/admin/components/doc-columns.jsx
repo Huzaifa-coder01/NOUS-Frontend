@@ -9,7 +9,7 @@ import { fDateTime } from 'src/utils/format-time';
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 
-import { openFile, fileUrlOf, downloadFile, formatFileSize } from 'src/store';
+import { openFile, fileUrlOf, fileNameOf, downloadFile, formatFileSize } from 'src/store';
 
 // ----------------------------------------------------------------------
 
@@ -58,18 +58,20 @@ export function DocFileActions({ doc }) {
 
 // ----------------------------------------------------------------------
 
-/** Name plus whatever the API gave us about the stored file. */
+/** The record's title, then the file name itself - never the storage key. */
 export const nameColumn = {
   id: 'name',
   label: 'PDF',
   render: (row) => {
-    const size = formatFileSize(row.fileSize);
+    const caption = [fileNameOf(row), formatFileSize(row.fileSize)]
+      .filter(Boolean)
+      .join(' \u00b7 ');
 
     return (
       <>
         <Typography variant="subtitle2">{row.name}</Typography>
-        <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-          {[row.fileExtension?.toUpperCase(), size].filter(Boolean).join(' \u00b7 ') || row.file}
+        <Typography variant="caption" sx={{ color: 'text.disabled' }} noWrap title={caption}>
+          {caption}
         </Typography>
       </>
     );

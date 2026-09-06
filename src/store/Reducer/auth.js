@@ -48,6 +48,9 @@ const adminHeaders = () =>
 
 const asEmail = (value) => String(value).trim().toLowerCase();
 
+/** Register rejects an account with no picture, so one stands in for it. */
+const DEFAULT_PROFILE_ICON = 'nous/dev/sample.png';
+
 export const authApi = createApi({
   reducerPath: 'auth',
   baseQuery: createCustomFetchBaseQuery(),
@@ -66,7 +69,7 @@ export const authApi = createApi({
           email: asEmail(email),
           password,
           userType: 'student',
-          profileIcon: profileIcon || 'nous/dev/sample.png',
+          profileIcon: profileIcon || DEFAULT_PROFILE_ICON,
           ...device(),
         },
       }),

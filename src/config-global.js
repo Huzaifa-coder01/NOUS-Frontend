@@ -37,6 +37,15 @@ export const CONFIG = {
     deviceType: env.VITE_DEVICE_TYPE ?? 'web',
     /** Which POST /upload/* handler to use. */
     uploadDriver: env.VITE_UPLOAD_DRIVER ?? 'cloudinary',
+    /**
+     * Where a stored file key resolves to.
+     *
+     * The upload API answers with a relative key (`nous/dev/<uuid>.png`) and
+     * records keep only that, so the browser needs the delivery prefix to show
+     * an avatar or open a PDF. The API cannot serve these keys itself - the
+     * slashes in them do not match its `/upload/:name` route.
+     */
+    mediaBaseUrl: (env.VITE_MEDIA_BASE_URL ?? '').replace(/\/+$/, ''),
   },
 
   auth: {

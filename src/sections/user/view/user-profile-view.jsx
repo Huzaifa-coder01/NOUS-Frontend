@@ -15,7 +15,14 @@ import { useTabs } from 'src/hooks/use-tabs';
 
 import { idOf } from 'src/constants/nous';
 import { DashboardContent } from 'src/layouts/dashboard';
-import { useGetUsersQuery, useGetLevelsQuery, useGetCoursesQuery, useGetSubjectsQuery, useGetChaptersQuery } from 'src/store';
+import {
+  mediaUrl,
+  useGetUsersQuery,
+  useGetLevelsQuery,
+  useGetCoursesQuery,
+  useGetSubjectsQuery,
+  useGetChaptersQuery,
+} from 'src/store';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -98,8 +105,16 @@ export function UserProfileView() {
           <Stack spacing={2}>
             <InfoRow icon="solar:user-bold" label="Name" value={user?.name} />
             <InfoRow icon="solar:letter-bold" label="Email" value={user?.email} />
-            <InfoRow icon="solar:shield-user-bold" label="Role" value={user?.role === 'admin' ? 'Administrator' : 'Student'} />
-            <InfoRow icon="solar:calendar-date-bold" label="Joined" value={user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'} />
+            <InfoRow
+              icon="solar:shield-user-bold"
+              label="Role"
+              value={user?.role === 'admin' ? 'Administrator' : 'Student'}
+            />
+            <InfoRow
+              icon="solar:calendar-date-bold"
+              label="Joined"
+              value={user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
+            />
           </Stack>
         </Card>
       </Grid>
@@ -126,7 +141,8 @@ export function UserProfileView() {
               </Typography>
 
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                As an administrator you control the entire catalog — courses, levels, subjects, chapters and the syllabus, notes and past papers students read — plus every account.
+                As an administrator you control the entire catalog — courses, levels, subjects,
+                chapters and the syllabus, notes and past papers students read — plus every account.
                 Students can only upload notes.
               </Typography>
             </Card>
@@ -148,11 +164,14 @@ export function UserProfileView() {
             <Box sx={{ flexGrow: 1 }}>
               <Typography variant="subtitle1">{course.name}</Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                {course.contentCount?.activeLevels ?? 0} levels · {course.contentCount?.activeSubjects ?? 0} subjects
+                {course.contentCount?.activeLevels ?? 0} levels ·{' '}
+                {course.contentCount?.activeSubjects ?? 0} subjects
               </Typography>
             </Box>
 
-            <Label color={course.status === 'active' ? 'success' : 'default'}>{course.status}</Label>
+            <Label color={course.status === 'active' ? 'success' : 'default'}>
+              {course.status}
+            </Label>
           </Stack>
         </Box>
       ))}
@@ -161,13 +180,17 @@ export function UserProfileView() {
 
   return (
     <DashboardContent>
-      <CustomBreadcrumbs heading="Profile" links={[{ name: 'Admin', href: paths.admin.root }, { name: 'Profile' }]} sx={{ mb: { xs: 3, md: 5 } }} />
+      <CustomBreadcrumbs
+        heading="Profile"
+        links={[{ name: 'Admin', href: paths.admin.root }, { name: 'Profile' }]}
+        sx={{ mb: { xs: 3, md: 5 } }}
+      />
 
       <Card sx={{ mb: 3, height: 290 }}>
         <ProfileCover
           role={user?.role === 'admin' ? 'Administrator' : 'Student'}
           name={user?.name}
-          avatarUrl={user?.profileIcon || undefined}
+          avatarUrl={mediaUrl(user?.profileIcon) || undefined}
           coverUrl="/assets/background/background-4.jpg"
         />
 
@@ -194,7 +217,6 @@ export function UserProfileView() {
 
       {tabs.value === 'profile' && renderProfile}
       {tabs.value === 'catalog' && renderCatalog}
-      
     </DashboardContent>
   );
 }

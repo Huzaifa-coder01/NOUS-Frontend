@@ -18,10 +18,11 @@ import { RouterLink } from 'src/routes/components';
 import { useBoolean } from 'src/hooks/use-boolean';
 
 import { Iconify } from 'src/components/iconify';
+import { UploadAvatar } from 'src/components/upload';
 import { Form, Field } from 'src/components/hook-form';
 
 import { signUp } from 'src/auth/context/jwt';
-import { useAuthContext } from 'src/auth/hooks';
+import { useUploadFileMutation, useDeleteFileMutation } from 'src/store';
 
 // ----------------------------------------------------------------------
 
@@ -41,13 +42,19 @@ export const SignUpSchema = zod.object({
 // ----------------------------------------------------------------------
 
 export function JwtSignUpView() {
-  const { checkUserSession } = useAuthContext();
-
   const navigate = useNavigate();
 
   const password = useBoolean();
 
+  const [uploadFile] = useUploadFileMutation();
+
+  const [deleteFile] = useDeleteFileMutation();
+
   const [errorMsg, setErrorMsg] = useState('');
+
+  // the picked file is only held here - it is not sent anywhere until the form
+  // is submitted, so abandoning sign up leaves nothing stored
+  const [avatarFile, setAvatarFile] = useState(null);
 
   const defaultValues = { firstName: '', lastName: '', email: '', password: '' };
 
@@ -62,18 +69,30 @@ export function JwtSignUpView() {
   } = methods;
 
   const onSubmit = handleSubmit(async (data) => {
+    // `profileIcon` is required by register and the account is `pending` with
+    // no session afterwards, so the picture cannot be attached later - it is
+    // uploaded here and removed again if the account is not created
+    let uploaded = null;
+
     try {
+      if (avatarFile) uploaded = await uploadFile(avatarFile).unwrap();
+
       // register creates the account as pending and emails an OTP, so there is
       // no session yet - the next step is verifying that code
       await signUp({
         name: `${data.firstName} ${data.lastName}`.trim(),
         email: data.email,
         password: data.password,
+        profileIcon: uploaded?.file,
       });
 
       navigate(paths.auth.jwt.verifyEmail);
     } catch (error) {
       console.error(error);
+
+      // nothing owns this file now that sign up failed
+      if (uploaded?.file) deleteFile(uploaded.file);
+
       setErrorMsg(error instanceof Error ? error.message : error);
     }
   });
@@ -96,6 +115,8 @@ export function JwtSignUpView() {
 
   const renderForm = (
     <Stack spacing={3}>
+      <UploadAvatar onSelect={setAvatarFile} disabled={isSubmitting} sx={{ mb: 1 }} />
+
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
         <Field.Text name="firstName" label="First name" InputLabelProps={{ shrink: true }} />
         <Field.Text name="lastName" label="Last name" InputLabelProps={{ shrink: true }} />

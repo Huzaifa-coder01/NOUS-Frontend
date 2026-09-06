@@ -36,7 +36,28 @@ const {
  * into the slice as-is.
  *************************************** */
 export async function signIn({ email, password }) {
-  const data = await run(login, { email, password }, 'Could not sign you in');
+  let data;
+
+  try {
+    data = await store.dispatch(login.initiate({ email, password })).unwrap();
+  } catch (error) {
+    const failure = new ApiError(error, 'Could not sign you in');
+
+    // the credentials are fine but the account was never verified; the backend
+    // says so with `isEmailVerified`, so finish that instead of dead-ending on
+    // an error the person cannot act on from here
+    if (failure.data?.data?.isEmailVerified === false) {
+      remember(SIGNUP_KEY, { email, otp: null });
+
+      // the code from sign up has almost certainly expired, so the screen they
+      // land on gets a fresh one; if the resend is refused they can ask again
+      await resendSignUpOtp().catch(() => null);
+
+      failure.needsEmailVerification = true;
+    }
+
+    throw failure;
+  }
 
   if (!data?.token) throw new Error('The server did not return a session token');
 
@@ -87,8 +108,12 @@ export function getPendingSignUp() {
   return recall(SIGNUP_KEY);
 }
 
-export async function signUp({ name, email, password }) {
-  const created = await run(register, { name, email, password }, 'Could not create your account');
+export async function signUp({ name, email, password, profileIcon }) {
+  const created = await run(
+    register,
+    { name, email, password, profileIcon },
+    'Could not create your account'
+  );
 
   // register nests the code under otpInfo; a resend returns it at the top
   const otp = created?.otpInfo?.emailOtp?.otp ?? created?.otp ?? null;

@@ -81,6 +81,15 @@ export function JwtSignInView() {
       navigate(getLandingPath(role, searchParams.get('returnTo')), { replace: true });
     } catch (error) {
       console.error(error);
+
+      // an unverified account cannot sign in at all, so send them to the screen
+      // that can fix it rather than showing a message they cannot act on
+      if (error?.needsEmailVerification) {
+        navigate(paths.auth.jwt.verifyEmail);
+
+        return;
+      }
+
       setErrorMsg(error instanceof Error ? error.message : String(error));
     }
   });

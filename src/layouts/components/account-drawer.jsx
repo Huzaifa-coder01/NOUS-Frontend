@@ -20,6 +20,8 @@ import { Iconify } from 'src/components/iconify';
 import { Label } from 'src/components/label';
 import { Scrollbar } from 'src/components/scrollbar';
 
+import { mediaUrl } from 'src/store';
+
 import { useAuthContext } from 'src/auth/hooks';
 
 import { AccountButton } from './account-button';
@@ -35,6 +37,10 @@ export function AccountDrawer({ data = [], sx, ...other }) {
   const pathname = usePathname();
 
   const { user } = useAuthContext();
+
+  // the account record keeps the storage key its picture was uploaded under,
+  // which the browser cannot load on its own
+  const photoURL = mediaUrl(user?.profileIcon);
 
   const [open, setOpen] = useState(false);
 
@@ -58,7 +64,7 @@ export function AccountDrawer({ data = [], sx, ...other }) {
     <AnimateAvatar
       width={96}
       slotProps={{
-        avatar: { src: undefined, alt: user?.name },
+        avatar: { src: photoURL, alt: user?.name },
         overlay: {
           border: 2,
           spacing: 3,
@@ -75,7 +81,7 @@ export function AccountDrawer({ data = [], sx, ...other }) {
       <AccountButton
         open={open}
         onClick={handleOpenDrawer}
-        photoURL={undefined}
+        photoURL={photoURL}
         displayName={user?.name}
         sx={sx}
         {...other}

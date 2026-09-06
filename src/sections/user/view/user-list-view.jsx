@@ -17,6 +17,7 @@ import {
   useCreateUserMutation,
   useUpdateUserMutation,
   useDeleteUserMutation,
+  mediaUrl,
 } from 'src/store';
 
 import { Label } from 'src/components/label';
@@ -54,7 +55,7 @@ const COLUMNS = [
     label: 'Name',
     render: (row) => (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        <Avatar alt={row.name} src={row.profileIcon || undefined}>
+        <Avatar alt={row.name} src={mediaUrl(row.profileIcon) || undefined}>
           {row.name?.charAt(0)?.toUpperCase()}
         </Avatar>
 
