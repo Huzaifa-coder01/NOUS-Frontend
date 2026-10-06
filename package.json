@@ -6,10 +6,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --port 3031",
+    "dev": "node api.js && vite --port 3031",
     "dev:host": "vite --host",
-    "build": "vite build",
-    "start": "vite preview",
+    "build": "node api.js && vite build",
+    "start": "node api.js && vite preview",
     "fm:check": "prettier --check \"src/**/*.{js,jsx}\"",
     "fm:fix": "prettier --write \"src/**/*.{js,jsx}\"",
     "rm:all": "rm -rf node_modules dist",
