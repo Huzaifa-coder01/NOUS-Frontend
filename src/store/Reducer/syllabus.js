@@ -38,7 +38,9 @@ export const syllabusApi = createApi({
       query: ({ chapterId, name, file, fileUrl }) => ({
         url: API_ROUTES.SYLLABUS.CREATE,
         method: 'POST',
-        body: { chapterId, name: String(name).trim(), file, fileUrl },
+        // the API validates the stored key as `fileName`; `file` is kept for
+        // older builds that still read that spelling
+        body: { chapterId, name: String(name).trim(), fileName: file, file, fileUrl },
       }),
       transformResponse: unwrap,
       invalidatesTags: ['Syllabus'],
@@ -49,7 +51,7 @@ export const syllabusApi = createApi({
       query: ({ id, ...body }) => ({
         url: API_ROUTES.SYLLABUS.UPDATE(id),
         method: 'PUT',
-        body,
+        body: body.file ? { ...body, fileName: body.file } : body,
       }),
       transformResponse: unwrap,
       invalidatesTags: ['Syllabus'],

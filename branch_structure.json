@@ -1,0 +1,21 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "api-integration",
+    "main",
+    "origin",
+    "ui"
+  ],
+  "parent": {
+    "api-integration": "main",
+    "main": null,
+    "origin": "main",
+    "ui": "main"
+  },
+  "order": [
+    "main",
+    "api-integration",
+    "origin",
+    "ui"
+  ]
+}

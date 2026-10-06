@@ -43,6 +43,9 @@ export const pastPapersApi = createApi({
           subjectId,
           ...(chapterId ? { chapterId } : {}),
           name: String(name).trim(),
+          // the API validates the stored key as `fileName`; `file` is kept for
+          // older builds that still read that spelling
+          fileName: file,
           file,
           fileUrl,
         },
@@ -56,7 +59,7 @@ export const pastPapersApi = createApi({
       query: ({ id, ...body }) => ({
         url: API_ROUTES.PAST_PAPERS.UPDATE(id),
         method: 'PUT',
-        body,
+        body: body.file ? { ...body, fileName: body.file } : body,
       }),
       transformResponse: unwrap,
       invalidatesTags: ['PastPapers'],
